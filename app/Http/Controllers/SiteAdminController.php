@@ -103,7 +103,15 @@ class SiteAdminController extends Controller
             } else {
                 $imagePath = $this->getBaseUrl() . "/" . $courseImagePath;
 
-                DB::table("course")->insert(["courseName" => $courseName, "courseDescription" => $courseDescription, "price" => $coursePrice, "courseCategory" => $courseCategory, "image" => $imagePath, "published" => $published, "duration" => $duration]);
+                DB::table("course")->insert([
+                    "courseName" => $courseName, 
+                    "courseDescription" => $courseDescription, 
+                    "price" => $coursePrice, 
+                    "courseCategory" => $courseCategory, 
+                    "image" => $imagePath, 
+                    "published" => $published,
+                    "duration" => $duration
+                ]);
 
                 return response()->json(["success" => true, "message" => "Course Creation Successful"]);
             }
@@ -114,7 +122,7 @@ class SiteAdminController extends Controller
 
     public function editCourse(Request $req)
     {
-        $token=$req->token;
+        // $token=$req->token;
         $courseID = $req->courseID;
         $courseName = $req->courseName;
         $courseDescription = $req->courseDescription;
@@ -125,15 +133,10 @@ class SiteAdminController extends Controller
         $image= $req->image;
         $duration = $req->duration;
 
-        // var_dump($courseID);
-        // var_dump($token);
-        $query=DB::table("users")->where('token',"=", $token)->get();
-        
-        // var_dump($query);
+        // $query=DB::table("users")->where('token',"=", $token)->get();
         
         // Checks if courseID exists
-
-        if(count($query)==1){
+        // if(count($query)==1){
             if (DB::table("course")->where("courseID", "=", $courseID)->exists()) {
 
                 if($req->file("courseImage")) {
@@ -149,10 +152,9 @@ class SiteAdminController extends Controller
             } else {
                 return response()->json(["success" => false, "message" => "Course Does Not Exists"], 400);
             }
-        }
-        return response()->json(["success" => false, "message" =>"Not a Site Admin"]);
+        // }
+        // return response()->json(["success" => false, "message" =>"Not a Site Admin"], 400);
     }
-
 
     public function publish (Request $req) {
         $published = $req->published;
@@ -255,9 +257,6 @@ class SiteAdminController extends Controller
         return response()->json(["success" => true, "orders" => $orders]);
     }
 
-  
-
-
     public function editOrderStatus(Request $req)
     {
 
@@ -272,10 +271,7 @@ class SiteAdminController extends Controller
         } else {
             return response()->json(["success" => false, "message" => "Order does not exist"]);
         }
-        }
-
-  
-     
+    }     
 
     public function deleteBundle(Request $req)
     {
@@ -297,12 +293,7 @@ class SiteAdminController extends Controller
         $moduleName = $req->moduleName;
         $moduleDescription = $req->moduleDescription;
         $courseID = $req->courseID;
-        // $duration =$req->duration;
-        // $test= CarbonInterval::seconds('900')->cascade()->forHumans();
         $duration=Carbon::now()->hour(0)->minute(0)->second($req->duration)->toTimeString();
-        // $duration=Carbon::createFromTime(0, $req->duration, 0)->toTimeString();
-        var_dump($duration);
-        
 
         // Validate that a file was uploaded
         $validator = Validator::make($req->file(), [
@@ -335,7 +326,16 @@ class SiteAdminController extends Controller
                         File::delete(storage_path("../../") . $moduleFolderPath);
                     }
 
-                    $moduleID = DB::table("module")->insertGetId(["moduleName" => $moduleName, "moduleDescription" => $moduleDescription, "courseID" => $courseID, "folder" => $folderPath,"duration" =>$duration]);
+                    $folderPath = explode(":8000", $folderPath)[1]; // local
+                    // $folderPath = explode(".com", $folderPath)[1];
+                    $folderPath = "../../.." . $folderPath;
+                    $moduleID = DB::table("module")->insertGetId([
+                        "moduleName" => $moduleName, 
+                        "moduleDescription" => $moduleDescription, 
+                        "courseID" => $courseID, 
+                        "folder" => $folderPath,
+                        "duration" => $duration
+                    ]);
 
                     return response()->json(["success" => true, "message" => "Module Added", "moduleID" => $moduleID]);
                 }
@@ -509,125 +509,220 @@ class SiteAdminController extends Controller
         }
     }
 
-public function addCourseToOrders(Request $req){
-        $token = $req->token;
-        $orderNumber = $req->orderNumber;
-        $courseID= $req->courseID;
-        $companyID = $req->companyID;
-        $status = $req->status;
-        $seats = $req->seats;
+    public function addCourseToOrders(Request $req)
+    {
+            $token = $req->token;
+            $orderNumber = $req->orderNumber;
+            $courseID= $req->courseID;
+            $companyID = $req->companyID;
+            $status = $req->status;
+            $seats = $req->seats;
 
-        if (DB::table("orders")->where("orderNumber", "=", $orderNumber)->where("companyID","=",$companyID)->exists()) {
-    
-            $checkToken = DB::table("users")->where('token',"=", $token)->where("userRoleID","=",1)->get();
+            if (DB::table("orders")->where("orderNumber", "=", $orderNumber)->where("companyID","=",$companyID)->exists()) {
         
-                // Checks if order number doesnt already have the course added
-                if (DB::table("orders")->where("orderNumber","=", $orderNumber)->where("courseID", "=", $courseID)->doesntexist()) {
+                $checkToken = DB::table("users")->where('token',"=", $token)->where("userRoleID","=",1)->get();
+            
+                    // Checks if order number doesnt already have the course added
+                    if (DB::table("orders")->where("orderNumber","=", $orderNumber)->where("courseID", "=", $courseID)->doesntexist()) {
+            
+                            DB::table("orders")->insert(["courseID" => $courseID
+                            , "orderNumber" => $orderNumber, "companyID"=>$companyID
+                            ,"status" => $status, "seats" => $seats
+                        ]);
+                            // $query=DB::table("module")->join("orders","orders.courseID","=","module.courseID")->selectRaw("count(moduleName)as moduleCount")-where("courseID",$courseID)->where("orderNumber","=", $orderNumber);
         
-                        DB::table("orders")->insert(["courseID" => $courseID
-                        , "orderNumber" => $orderNumber, "companyID"=>$companyID
-                        ,"status" => $status, "seats" => $seats
-                    ]);
-                        // $query=DB::table("module")->join("orders","orders.courseID","=","module.courseID")->selectRaw("count(moduleName)as moduleCount")-where("courseID",$courseID)->where("orderNumber","=", $orderNumber);
-    
-                        return response()->json(["success" => true, "message" => "Course Added Successfully"]);
+                            return response()->json(["success" => true, "message" => "Course Added Successfully"]);
+                        } else {
+                            return response()->json(["success" => true, "message" => "Course Already exists for the company"]);
+                        }
                     } else {
-                        return response()->json(["success" => true, "message" => "Course Already exists for the company"]);
+                        return response()->json(["success" => false, "message" => "Incorrect order number or companyID"]);
                     }
-                } else {
-                    return response()->json(["success" => false, "message" => "Incorrect order number or companyID"]);
-                }
-          
-}
+            
+    }
 
-public function coursesInBundles(Request $req){
-    $token = $req->token;
+    public function coursesInBundles(Request $req)
+    {
+        $token = $req->token;
+            
+        if(DB::table("users")->where('token',"=", $token)->where("userRoleID","=",3)->exists()){
+            $query = DB::table("courseBundle")->join("bundle","bundle.bundleID","=", "courseBundle.bundleID")->get();
+
+            return response()->json(["success" => true, "data" => $query]);
+        }
+        return response()->json(["success" => false, "message" =>"Not a Site Admin"]);
+    }
+
+
+    public function adminLogin (Request $req) 
+    {
+        $token= $req->token;
+        $accessCode= $req->accessCode;
+        $userEmail= $req->userEmail;
+
+        if(DB::table("users")->where('userEmail',"=", $userEmail)->where("accessCode","=",$accessCode)->exists()) {
+            $query=DB::table("users")->select(["token"])->where("accessCode","=",$accessCode)->get();
+            // $query=DB::table('admin')->select(["admin.*"])->get();
+                return response()->json(["success" => true,  "message" => "Admin login successful","data" => $query]);
+        }
+            else{
+                return response()->json(["success" => false,  "message" => "Login failed, Invalid access code or Email"], 400);
+        }
+    }
+
+    
+    public function assignCoursesToCompany(Request $req)
+    {
+        $companyID = $req->companyID;
+        // $courseID = $req->courseID;
+        $courseDescriptions= $req->courseDescription;
+        // $seats = $req->seats;
+
+        if (!is_array($courseDescriptions)){
+            return response()->json(["success" => false, "error" =>"Course description is not an array"],400);
+        }
+        foreach($courseDescriptions as $courseDescription){
+            var_dump($courseID);
+            $courseID= $courseDescription->courseID;
+            
+            $seats=$courseDescription->seats;
+
+            DB::table("courseSeat")->insert(["seats" => $seats, "courseID" => $courseID]);
+
+            return response()->json(["success" => true, "message" => "Course Assigned successfully"]);
+        }
+        return response()->json(["success" => false, "message" =>"Course Assign unsuccessful"]);
+    }  
+
+    public function  getCandidatesScores(Request $req)
+    {
+        // $courseID = $req->courseID;
+        // $userID = $req->userID;
+
+        $scoresandAttempts=DB::table("courseAssessmentLog")->join("users","users.userID", "=", "courseAssessmentLog.userID")->selectRaw("concat(any_value(users.userFirstName), ' ', any_value(users.userLastName)) as name, any_value(count(courseAssessmentLog.userID)) as noOfAttempts,status,courseAssessmentLog.score, courseID")->groupBy("courseAssessmentLog.ID")
+        // ->skip($offset)->take($page_size)
+        ->get();
+
+        // $scoresandAttempts=DB::table("courseAssessmentLog")->selectRaw(" any_value(count(courseAssessmentLog.userID)) as noOfAttempts")->where("courseAssessmentLog.userID","", $userID)->where("courseAssessmentLog.courseID","",$courseID)->get();
         
-    if(DB::table("users")->where('token',"=", $token)->where("userRoleID","=",3)->exists()){
-        $query = DB::table("courseBundle")->join("bundle","bundle.bundleID","=", "courseBundle.bundleID")->get();
+    
+        return response()->json(["success" => true, "scoresandAttempts" => $scoresandAttempts]);
 
-        return response()->json(["success" => true, "data" => $query]);
     }
-    return response()->json(["success" => false, "message" =>"Not a Site Admin"]);
-}
 
+    public function getDeadline(Request $req)
+    {
+        $courseID= $req->courseID;
 
-public function adminLogin (Request $req) {
-    $token= $req->token;
-    $accessCode= $req->accessCode;
-    $userEmail= $req->userEmail;
+        $current_time = Carbon::now();
 
-    if(DB::table("users")->where('userEmail',"=", $userEmail)->where("accessCode","=",$accessCode)->exists()) {
-        $query=DB::table("users")->select(["token"])->where("accessCode","=",$accessCode)->get();
-        // $query=DB::table('admin')->select(["admin.*"])->get();
-            return response()->json(["success" => true,  "message" => "Admin login successful","data" => $query]);
+        if ($current_time>= '2022-02-28 00:00:00' && $current_time<='2022-06-30 23:59:59') {
+            return response()->json(["success" => true, "message" => "Course is currently active"]);
+        } 
+        return response()->json(["success" => false, "message" =>"Course is currently inactive"]);
     }
+
+    public function addToWishList(Request $req)
+    {
+        $courseID = $req->courseID;
+        $userID = $req->userID;
+
+        if(DB::table("wishlist")->where('userID',"=", $userID)->where('courseID','=', $courseID)->doesntExist()){
+            $query = DB::table("wishlist")->insert(["courseID"=> $courseID, "userID"=> $userID]);
+
+            return response()->json(["success" => true, "data"=>$query , "message"=>"Course Added to wishlist"]);
+        }
         else{
-            return response()->json(["success" => false,  "message" => "Login failed, Invalid access code or Email"], 400);
-    }
-}
-
-  
-public function assignCoursesToCompany(Request $req){
-    $companyID = $req->companyID;
-    // $courseID = $req->courseID;
-    $courseDescriptions= $req->courseDescription;
-    // $seats = $req->seats;
-
-    if (!is_array($courseDescriptions)){
-        return response()->json(["success" => false, "error" =>"Course description is not an array"],400);
-    }
-    foreach($courseDescriptions as $courseDescription){
-        var_dump($courseID);
-        $courseID= $courseDescription->courseID;
+            return response()->json(["success" => false,  "message" => "Course Already in wishlist"]);
+        }
         
-        $seats=$courseDescription->seats;
-
-        DB::table("courseSeat")->insert(["seats" => $seats, "courseID" => $courseID]);
-
-        return response()->json(["success" => true, "message" => "Course Assigned successfully"]);
     }
-    return response()->json(["success" => false, "message" =>"Course Assign unsuccessful"]);
-}  
 
-public function  getCandidatesScores(Request $req){
-    // $courseID = $req->courseID;
-    // $userID = $req->userID;
-
-    $scoresandAttempts=DB::table("courseAssessmentLog")->join("users","users.userID", "=", "courseAssessmentLog.userID")->selectRaw("concat(any_value(users.userFirstName), ' ', any_value(users.userLastName)) as name, any_value(count(courseAssessmentLog.userID)) as noOfAttempts,status,courseAssessmentLog.score, courseID")->groupBy("courseAssessmentLog.ID")
-    // ->skip($offset)->take($page_size)
-    ->get();
-
-    // $scoresandAttempts=DB::table("courseAssessmentLog")->selectRaw(" any_value(count(courseAssessmentLog.userID)) as noOfAttempts")->where("courseAssessmentLog.userID","", $userID)->where("courseAssessmentLog.courseID","",$courseID)->get();
-    
-   
-    return response()->json(["success" => true, "scoresandAttempts" => $scoresandAttempts]);
-
-}
-
-public function getDeadline(Request $req){
-    $courseID= $req->courseID;
-
-    $current_time = Carbon::now();
-
-    if ($current_time>= '2022-02-28 00:00:00' && $current_time<='2022-06-30 23:59:59') {
-        return response()->json(["success" => true, "message" => "Course is currently active"]);
-    } 
-    return response()->json(["success" => false, "message" =>"Course is currently inactive"]);
-}
-
-public function addToWishList(Request $req){
-    $courseID = $req->courseID;
-    $userID = $req->userID;
-
-    if(DB::table("wishlist")->where('userID',"=", $userID)->where('courseID','=', $courseID)->doesntExist()){
-        $query = DB::table("wishlist")->insert(["courseID"=> $courseID, "userID"=> $userID]);
-
-        return response()->json(["success" => true, "data"=>$query , "message"=>"Course Added to wishlist"]);
+    public function getCategory(Request $req) 
+    {
+        $categories = DB::table('category')->get();
+        $course_data = [];
+        $i = -1;
+        $total = count($categories);
+        if ($total > 0) {
+            foreach ($categories as $category) 
+            {
+                $i++;
+                $course_data[$i]['categoryID'] = $category->categoryID;
+                $course_data[$i]['categoryName'] = $category->categoryName;
+                $course_data[$i]['courses'] = DB::table('course')->select('course.*')
+                        ->join('courseCategory', 'courseCategory.courseID', '=', 'course.courseID')
+                        ->where('courseCategory.categoryID', $category->categoryID)->get(); 
+            }
+            return response()->json(["success" =>true, "data" => $course_data]);
+        } else {
+            return response()->json(["success" => true, "categories" => [], "message" => "No Categories Available"], 204);
+        }
     }
-    else{
-        return response()->json(["success" => false,  "message" => "Course Already in wishlist"]);
+
+    public function addCategory(Request $req) 
+    {
+        $categoryName = $req->categoryName;
+        $categoryDescription = $req->categoryDescription;
+
+        if (DB::table('category')->where("categoryName", "=", $categoryName)->exists()) {
+            return response()->json(["success" => false, "message" => "Category already exist"], 400);
+        }else {
+            DB::table('courseCategory')->insert([
+                "categoryName" => $categoryName,
+                "categoryDescription" => $categoryDescription
+            ]);
+            return response()->json(["success" => true, "message" => "Category created successfully."]);
+        }
     }
-    
-}
+
+    public function editCategory(Request $req) 
+    {
+        $categoryName = $req->categoryName;
+        $categoryDesc = $req->categoryDescription;
+        $categoryID = $req->categoryID;
+
+        if (DB::table('category')->where('categoryID', "=", $categoryID)->exists()) {
+            DB::table('category')->where('categoryID', $categoryID)->update([
+                "categoryName" => $categoryName,
+                "categoryDescription" => $categoryDesc,
+            ]);
+            return response()->json(["success" => true, "message", "=", "Category updated successfully."]);
+        }else {
+            return response()->json(["success" => false, "message" => "Category does not exist"], 400);
+        }
+    }
+
+    public function deleteCategory(Request $req)
+    {
+        $categoryID = $req->categoryID;
+
+        if (DB::table('category')->where('categoryID', $categoryID)->exists()) {
+            DB::table('category')->where('categoryID', $categoryID)->delete();
+            return response()->json(["success" => true, "message", "=", "Category deleted successfully."]);
+        }else {
+            return response()->json(["success" => false, "message" => "Category does not exist"], 400);
+        }
+    }
+
+    public function addCourseToCategory(Request $req)
+    {
+        $courseID = $req->courseID;
+        $categoryID = $req->categoryID;
+
+        if (DB::table('category')->where('categoryID', $categoryID)->exists()) {
+            if(DB::table("course")->where('courseID', $courseID)->exists()) {
+                DB::table("courseCategory")->insert([
+                    "courseID" => $courseID,
+                    "categoryID" => $categoryID
+                ]);
+                return response()->json(["success" => true, "message" => "Added successfully."]);
+
+            } else {
+                return response()->json(["success" => false, "message" => "Course does not exist."]);
+            }
+        } else {
+            return response()->json(["success" => false, "message" => "Category does not exist."]);
+        }
+    }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\GetCompanyService;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -18,6 +20,11 @@ class GroupController extends Controller
         } else {
             return ["isAdmin" => false];
         }
+    }
+
+    public function __construct(GetCompanyService $getCompanyService)
+    {
+        $this->getCompanyService = $getCompanyService;
     }
 
     private function assignedACourse($firstname, $email)
@@ -393,8 +400,14 @@ class GroupController extends Controller
 
     public function sumPrice(Request $req)
     {
-       return  DB::table('groupenrolment')->join('course', 'course.courseID', '=', 'groupenrolment.courseID')->where('groupenrolment.groupID', '=', '151')->sum('course.price');
+        $token = $req->token;
+        $groupID = $req->groupID;
+        $companyID = $this->getCompanyID($token);
+        $wallet = $this->getCompanyService->getCompanyWallet($companyID);
+
+        $sum = DB::table('groupenrolment')->join('course', 'course.courseID', '=', 'groupenrolment.courseID')->where('groupenrolment.groupID', '=', $groupID)->sum('course.price');
         
+        return response()->json([ "success" => true, "course credits sum" => $sum, "company balance" => $wallet ]); 
     }
 
     public function fetchGroupUser(Request $req)

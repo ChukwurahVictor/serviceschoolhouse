@@ -74,7 +74,7 @@ class AuthController extends Controller
                 DB::table("group")->insert(["companyID" => $companyID, "groupName" => $roleName]);
             } 
 
-            $query = DB::table("users")->where("userEmail", "=", $email)->select(["token"])->get();
+            $query = DB::table("users")->where("userEmail", "=", $email)->select(["token", "userFirstName", "userLastName"])->get();
             $userData = ["token" => $query[0]->token, "role" => "admin", "name" => $query[0]->userFirstName.' '.$query[0]->userLastName];
             $this->sendVerifyEmail($firstname, $email, $email_token);
             return response()->json(["success" => true, "data" => $userData, "message" => 'Email sent, please check your inbox']);

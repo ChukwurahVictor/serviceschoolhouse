@@ -87,5 +87,14 @@ class Handler extends ExceptionHandler
                 ], 500);
             }
         });
+
+        $this->renderable(function (\BadMethodCallException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    "success" => false,
+                    "message" => $e->getMessage()
+                ], 500);
+            }
+        });
     }
 }

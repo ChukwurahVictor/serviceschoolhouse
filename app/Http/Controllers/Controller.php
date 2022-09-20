@@ -53,8 +53,18 @@ class Controller extends BaseController
 
     public function formatIntlPhoneNo($phone)
     {
-        if (substr($phone, 0, 1) === '0') {
+        $d = substr($phone, 0, 1);
+        if ($d === '0') {
             return '234' . substr($phone, 1);
+        }
+        if ($d === '7') {
+            return '2347' . substr($phone, 1);
+        }
+        if ($d === '8') {
+            return '2348' . substr($phone, 1);
+        }
+        if ($d === '9') {
+            return '2349' . substr($phone, 1);
         }
         return $phone;
     }

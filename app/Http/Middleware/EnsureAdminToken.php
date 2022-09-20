@@ -19,7 +19,7 @@ class EnsureAdminToken
     {
         $token = $request->token;
         if (DB::table("users")->where("token", "=", $token)->where("userRoleID", "=", 1)->doesntExist()) {
-            return response()->json(["success" => false, "message" => "User Not Admin"], 401);
+            return response()->json(["success" => false, "message" => "User Not Admin."], 401);
         }
         return $next($request);
     }

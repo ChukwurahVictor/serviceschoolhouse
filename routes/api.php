@@ -8,19 +8,9 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportingController;
 use App\Http\Controllers\SiteAdminController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\LoyaltyController;
 // use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-
-/*
-|--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| is assigned the "api" middleware group. Enjoy building your API!
-|
-*/
 
 // Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 //     return $request->user();
@@ -45,9 +35,12 @@ Route::prefix("v1")->middleware("isAdmin")->group(function () {
     Route::delete("/delete-user", [UserController::class, "deleteCompanyUser"]);
     Route::post("/companyusers", [UserController::class, "getCompanyUsers"]);
     Route::post("/company-users-search", [UserController::class, "companyUserSearch"]);
-    Route::post("/bulk-upload", [UserController::class, "bulkUpload"]);
-    
-    
+    Route::post("/bulk-upload", [UserController::class, "bulkUpload"]);    
+    Route::post("/convert-single-password", [UserController::class, "convertSinglePassword"]);
+    Route::post("/convert-group-password", [UserController::class, "convertGroupPassword"]);
+    Route::post("/company", [UserController::class, "getCompany"]);
+    Route::post("/billing", [UserController::class, "getBilling"]);
+    Route::post("/get-loyalty", [loyaltyController::class, "fetchLoyalty"]);
 });
 
 // Course Controller Endpoints
@@ -67,7 +60,7 @@ Route::prefix("v1")->group(function () {
     Route::post("/assessment-progress", [CoursesController::class, "insertAssessmentTracker"]);
     Route::get("/course-tracker/{token}", [CoursesController::class, "courseTrackerLog"]);
     Route::post("/test-assign-email", [CoursesController::class, "testmailAssign"]);
-   
+
 });
 
 // Group Controller Endpoints
@@ -101,15 +94,15 @@ Route::prefix("v1")->group(function () {
 });
 
 // Site Admin Page Controller Endpoints
-Route::prefix("v1")->middleware("isSiteAdmin")->group(function () {
+Route::prefix("v1")->middleware("isSiteAdmin")->group(function () { 
+    Route::post("/admin-login", [SiteAdminController::class, "adminLogin"])->withoutMiddleware("isSiteAdmin");
     Route::post("/registered-companies", [SiteAdminController::class, "getCompanies"]);
-    Route::post("/registered-users", [SiteAdminController::class, "getUsers"]);
-    Route::put("/admin-course", [SiteAdminController::class, "editCourse"])->withoutMiddleware("isSiteAdmin");
-    Route::delete("/admin-company", [SiteAdminController::class, "deleteCompany"]);
-    Route::post("/admin-course", [SiteAdminController::class, "createCourse"]);
-    Route::post("/admin-login", [SiteAdminController::class, "adminLogin"]);
-    Route::delete("/admin-course", [SiteAdminController::class, "deleteCourse"]);
     Route::put("/admin-company", [SiteAdminController::class, "editCompany"]);
+    Route::delete("/admin-company", [SiteAdminController::class, "deleteCompany"]);
+    Route::post("/registered-users", [SiteAdminController::class, "getUsers"]);
+    Route::post("/admin-edit-course", [SiteAdminController::class, "editCourse"]);
+    Route::post("/admin-course", [SiteAdminController::class, "createCourse"]);
+    Route::delete("/admin-course", [SiteAdminController::class, "deleteCourse"]);
     Route::post("/admin-publish", [SiteAdminController::class, "publish"]);
     Route::post("/admin-module", [SiteAdminController::class, "addModule"]);
     Route::put("/module-sum", [SiteAdminController::class, "sumOfModule"]);
@@ -129,6 +122,16 @@ Route::prefix("v1")->middleware("isSiteAdmin")->group(function () {
     // Route::post("/admin-topic", [SiteAdminController::class, "addTopic"]);
     Route::post("/test-upload", [SiteAdminController::class, "testFileUpload"])->withoutMiddleware("isSiteAdmin");
     Route::post("/test-folderupload", [SiteAdminController::class, "testFolderUpload"])->withoutMiddleware("isSiteAdmin");
+    Route::post("/add-category", [SiteAdminController::class, "addCategory"]);
+    Route::post("/get-category", [SiteAdminController::class, "getCategory"]);
+    Route::put("/edit-category", [SiteAdminController::class, "editCategory"]);
+    Route::delete("/delete-category", [SiteAdminController::class, "deleteCategory"]);
+    Route::post("/add-course-category", [SiteAdminController::class, "addCourseToCategory"]);
+    Route::get("/loyalty/{token}", [LoyaltyController::class, "fetchLoyalties"]);
+    Route::post("/loyalty", [LoyaltyController::class, "createLoyalty"]);
+    Route::post("/edit-loyalty", [LoyaltyController::class, "updateLoyalty"]);
+    Route::delete("/loyalty/{token}/{loyaltyID}", [LoyaltyController::class, "deleteLoyalty"]);
+    Route::get("/loyalty/{token}/{loyaltyID}", [LoyaltyController::class, "fetchLoyalty"]);
 });
 
 //Reporting Controller
