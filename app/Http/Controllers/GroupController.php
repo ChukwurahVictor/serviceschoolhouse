@@ -31,9 +31,10 @@ class GroupController extends Controller
     {
         $details = [
             'name' => $firstname,
+            'email' => $email,
             'login' => URL::to('/')
         ];
-        //return $details;
+
         Mail::to($email)->send(new \App\Mail\AssignedACourse($details));
     }
 
@@ -209,34 +210,57 @@ class GroupController extends Controller
                             // Check if available course seats is more than or equal to users in the group
                             if ($isSeatAvailable["availableSeat"] >= count($users)) {
 
-                                DB::table("groupEnrolment")->insert(["courseID" => $courseid, "groupID" => $groupid]);
+                                $course = DB::table("course")->where('courseID', $courseid)->first();
+                                $company = $this->getCompanyService->getCompany($checkToken["companyID"]);
 
                                 if (count($users) > 0) {
+                                    // check if company has enough credits to assign course to all users in the group
+                                    $totalExp = count($users) * $course->price;
+                                    if (!$company->wallet > $totalExp) {
+                                        return response()->json(["success" => false, "message" => "Insufficient credits to assign course to users"], 400);
+                                    }
+
                                     $errors=[];
                                     foreach ($users as $user) {
                                         // Check if any user is already enrolled to any course
-                                        // if (DB::table("courseEnrolment")->where("courseID", "=", $courseid)->where("userID", "=", $checkToken["userID"])->where("companyID", "=", $checkToken["companyID"])
-                                        // ->where([
-                                        //     'courseID' => $courseid,
-                                        //     'userID' => $checkToken["userID"],
-                                        //     'companyID' => $checkToken["companyID"]
-                                        // ])
-                                        // ->exists()) {
-                                        //  array_push($errors, $user->userFirstName." already enrolled to course");
-                                        // } else {
-                                            DB::table("courseEnrolment")->updateOrInsert(["userID" => $user->userID, "courseID" => $courseid, "companyID" => $checkToken["companyID"]], ["groupID" => $groupid]);
+                                        $courseExists = DB::table("courseEnrolment")->where("courseID", $courseid)->where("userID", $user->userID)->where("companyID", $company->companyID)->first();
+                                        if ($courseExists) 
+                                        {
+                                             array_push($errors, $user->userFirstName." already enrolled to course");
+                                        } else {
+                                            // enroll each user to course
+                                            DB::table("courseEnrolment")->updateOrInsert([
+                                                "userID" => $user->userID, 
+                                                "courseID" => $course->courseID, 
+                                                "companyID" => $company->companyID, 
+                                                "groupID" => $groupid
+                                            ]);
                                             
-                                            $this->assignedACourse($user->userFirstName, $user->userEmail);
-                                        // }
+                                            // Deduct cost for course and update company's wallet
+                                            $balance = $company->wallet - $course->price;
+                                            DB::table('company')->where('companyID', $company->companyID)->update(["wallet" => $balance ]);
+
+                                            // Add to billing table
+                                            DB::table('billing')->insert([
+                                                "companyID" => $company->companyID,
+                                                "userID" => $user->userID,
+                                                "cost" => $course->price,
+                                                "courseID" => $course->courseID,
+                                            ]);
+                                            // $this->assignedACourse($user->userFirstName, $user->userEmail);
+                                        }
                                     }
                                 }
+                                
+                                DB::table("groupEnrolment")->insert(["courseID" => $courseid, "groupID" => $groupid]);
+                                
                                 return response()->json(["success" => true, "message" => "Course Added Successfully", "errors" => $errors]);
                             } else {
                                 return response()->json(["success" => false, "message" => "Not Enough Course Seats for Group"], 400);
                             }
                         }
                     } else {
-                        return response()->json(["success" => false, "message" => "Group Already Assigned to course"], 400);
+                        return response()->json(["success" => false, "message" => "Course already assigned to Group"], 400);
                     }
                 } else {
                     return response()->json(["success" => false, "message" => "Course not Enrolled for"], 400);
@@ -310,7 +334,7 @@ class GroupController extends Controller
                                 // Get Available Seats
                                 $isSeatAvailable = $this->isSeatAvailable($checkToken["companyID"], $course->courseID);
                                 $result[$i] = $isSeatAvailable["isSeatAvailable"];
-                                // Checks if seat is not available for a course and adds it to the 'coursesNoSeat' array
+                                // Checks if seat is not available for a course and adds it to the 'coursesNoSeat' array;
                                 if (!$isSeatAvailable["isSeatAvailable"]) {
                                     array_push($coursesNoSeat, $course->courseName);
                                 }
@@ -334,13 +358,22 @@ class GroupController extends Controller
                                         DB::table("courseEnrolment")->updateOrInsert(["userID" => $userID, "companyID" => $checkToken["companyID"], "courseID" => $course->courseID], ["groupID" => $groupid]);
                                         $this->assignedACourse($user[0]->userFirstName, $user[0]->userEmail);
                                     }
-                                    //deduct price from wallet
                                     
-
+                                    //deduct price from wallet
                                     $calExpense = $company->wallet - $sumCoursesPrice;
                                     DB::table('company')->where('companyID', $checkToken["companyID"])->update([
                                         'wallet' => $calExpense
                                     ]);
+
+                                    //Add to billing table
+                                    foreach($courses as $course) {
+                                        $billing = DB::table('billing')->insert([
+                                            "companyID" => $checkToken["companyID"],
+                                            "userID" => $userID,
+                                            "cost" => $course->price,
+                                            "courseID" => $course->courseID,
+                                        ]);
+                                    }
                                     $message = $userExists["name"].' '."added Successfully and enrolled to course";
                                     array_push($userAndCourseEnrolment, $message);
                                     // return response()->json(["success" => true, "message" => "User Added Successfully"]);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\GetCompanyService;
+use App\Services\EmailService;
 
 use Exception;
 use Illuminate\Http\Request;
@@ -48,9 +49,10 @@ class UserController extends Controller
         Mail::to($email)->send(new \App\Mail\CreateUser($details));
     }
 
-    public function __construct(GetCompanyService $getCompanyService)
+    public function __construct(GetCompanyService $getCompanyService, EmailService $emailService)
     {
         $this->getCompanyService = $getCompanyService;
+        $this->emailService = $emailService;
     }
 
     public function createCompanyUser(Request $req)
@@ -94,28 +96,31 @@ class UserController extends Controller
                     return response()->json(["success" => false, "message" => "Insufficient funds."]);
 
                 }
-                
+
                 // insert user to user table and get the id
-                $user = DB::table("users")->insertGetId([
-                    "userFirstName" => $firstname, 
-                    "userLastName" => $lastname, 
-                    "userEmail" => $email, 
-                    "userPhone" => $tel, 
-                    "userGender" => $gender, 
-                    "userGrade" => $grade, 
-                    "userPassword" => $hash, 
-                    "userRoleID" => 2, 
-                    "groupRoleId" => $groupRoleId, 
-                    "location" => $location, 
-                    "companyID" => $companyID,  
-                    "employeeID" => $employeeID, 
-                    "token" => $newtoken
-                ]);
+                // $user = DB::table("users")->insertGetId([
+                //     "userFirstName" => $firstname, 
+                //     "userLastName" => $lastname, 
+                //     "userEmail" => $email, 
+                //     "userPhone" => $tel, 
+                //     "userGender" => $gender, 
+                //     "userGrade" => $grade, 
+                //     "userPassword" => $hash, 
+                //     "userRoleID" => 2, 
+                //     "groupRoleId" => $groupRoleId, 
+                //     "location" => $location, 
+                //     "companyID" => $companyID,  
+                //     "employeeID" => $employeeID, 
+                //     "token" => $newtoken
+                // ]);
 
-                $this->sendUserCreationEmail($firstname, $email, $employeeID);
+                $user = DB::table('users')->where("userID", '226')->first();
 
+                $template = $this->emailService->getMailTemplate("new_user"); //send company id
+                return $this->emailService->sendMail($template, $user, null);
+                
                 DB::table("userGroup")->insert(["userID" => $user, "groupID" => $groupid]); // add user to group
-
+                
                 $balance = $company->wallet - $cost;
                 DB::table('company')->where('companyID', $companyID)->update(["wallet" => $balance ]); // deduct cost and update company's wallet
 
@@ -130,6 +135,9 @@ class UserController extends Controller
                         "courseID" => $course->courseID,
                     ]);
                 }
+
+
+                // $this->sendUserCreationEmail($firstname, $email, $employeeID);
 
                 return response()->json(["success" => true, "message" => "User Account Created"]);
             } else {
@@ -344,6 +352,11 @@ class UserController extends Controller
                                             "courseID" => $course->courseID,
                                         ]);
                                     }
+
+                                    // $user = DB::table('users')->where("userID", $user)->first();
+
+                                    // $template = $this->emailService->getMailTemplate("new_user"); //send company id
+                                    // return $this->emailService->sendMail($template, $user, null);
     
                                     $this->sendUserCreationEmail($userFirstName, $userEmail, $employeeID);
                                     
@@ -432,17 +445,83 @@ class UserController extends Controller
     {
         $token = $req->token;
         $companyID = $this->getCompanyID($token);
-        $billing = $this->getCompanyService->getCompanyBilling($companyID);
-        if($billing) {
-            $total = count($billing);
-            if ($total > 0) {
-                return response()->json(["success" => true, "data" => $billing]);
+        $currentMonth = date('m');
+        $currentYear = date('Y');
+        $month = $req->input('month', $currentMonth); // set current month as default
+        $year = $req->input('year', $currentYear); // set current year as default
+        $userID = $req->userID;
+        $courseID = $req->courseID;
 
-            } else {
-                return response()->json(["success" => true, "message" => "No Billing Available"], 204);
-            }
-        } else {
-            return response()->json(["success" => false, "message" => "Company not found."], 400);
+        $query = DB::table('billing');
+        if($userID)
+        {
+            $query->where('userID', $userID);
         }
+
+        if($month)
+        {
+            $query->whereRaw('MONTH(created_at) = ?', [$month]);
+        }
+
+        if($year)
+        {
+            $query->whereRaw('YEAR(created_at) = ?', [$year]);
+        }
+
+        if($courseID)
+        {
+            $query->where('courseID', $courseID);
+        }
+
+        $total = $query->sum('cost');
+        $billings = $query->get();
+        
+        if(count($billings) > 0) {
+            return response()->json(["success" => true, "data" => $billings, "total" => $total]);
+        } else {
+            return response()->json(["success" => true, "message" => "No Billing available"]);
+        }
+    }
+
+    public function getUserLoyaltyLevel(Request $req)
+    {
+        $token = $req->token;
+        $userID = $this->getUserID($token);
+        $loyaltyLevel = DB::table('userBadges')
+            ->select('userBadges.points', 'loyaltyLevels.title')
+            ->join('loyaltyLevels', 'loyaltyLevels.loyaltylevelID', '=', 'userBadges.loyaltylevelID')
+            ->where('userBadges.userID', '=', $userID)->first();
+        if(!$loyaltyLevel) {
+            return response()->json([ "success" => false, "message" => "No loyalty level found." ]);
+        }
+        return response()->json([ "success" => true, "data" => $loyaltyLevel ]);
+    }
+
+    public function sendCustomMail(Request $req)
+    {
+        $mailBody = $req->mailBody;
+        $users= $req->users;
+        $errors = [];
+        $success = [];
+
+        if (!is_array($users)){
+            return response()->json(["success" => false, "error" =>"Users is not an array"], 400);
+        }
+
+        foreach($users as $user){
+            $this->emailService->sendMail($mailBody, $user, null);
+            array_push($success, "Email sent to " . $user);
+        }
+    }
+
+    public function editMailTemplate(Request $req)
+    {
+        $type = $req->type;
+        $subject = $req->subject;
+        $body = $req->body;
+
+        $this->emailService->saveTemplate($type, $subject, $body);
+
+        return response()->json(["success" => true, "message" => "Template updated successfully"]);
     }
 }

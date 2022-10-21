@@ -44,7 +44,7 @@ return [
 
         'learningPlatformFolder' => [
             'driver' => 'local',
-            'root'   => storage_path('../../'),
+            'root'   => storage_path('../../..'),
         ],
 
         's3' => [

@@ -40,7 +40,7 @@ Route::prefix("v1")->middleware("isAdmin")->group(function () {
     Route::post("/convert-group-password", [UserController::class, "convertGroupPassword"]);
     Route::post("/company", [UserController::class, "getCompany"]);
     Route::post("/billing", [UserController::class, "getBilling"]);
-    Route::post("/get-loyalty", [loyaltyController::class, "fetchLoyalty"]);
+    Route::post("/get-loyalty", [UserController::class, "getUserLoyaltyLevel"])->withoutMiddleware('isAdmin');
 });
 
 // Course Controller Endpoints

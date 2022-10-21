@@ -22,7 +22,8 @@ class LoyaltyController extends Controller
     public function createLoyalty(Request $req)
     {
         $title = $req->title;
-        $checkpoints = $req->checkpoints;
+        $min_points = $req->min_points;
+        $max_points = $req->max_points;
         $badge = $req->badge;
 
         $loyaltylevel = DB::table('loyaltylevels')->where('title', $title)->doesntExist();
@@ -30,7 +31,8 @@ class LoyaltyController extends Controller
         if ($loyaltylevel) {
             DB::table('loyaltylevels')->insert([
                 "title" => $title,
-                "checkpoints" => $checkpoints,
+                "min_points" =>$min_points,
+                "max_points" =>$max_points,
                 "badges" => $badge
             ]);
             return response()->json(["success" => true, "message" => "Loyalty level created successfully."], 201);
@@ -57,7 +59,8 @@ class LoyaltyController extends Controller
     {
         $loyaltyID = $req->loyaltyID;
         $title = $req->title;
-        $checkpoints = $req->checkpoints;
+        $min_points = $req->min_points;
+        $max_points = $req->max_points;
         $badge = $req->badge;
 
         $loyaltylevelExists = DB::table('loyaltylevels')->where('loyaltylevelID', $loyaltyID)->exists();
@@ -65,7 +68,8 @@ class LoyaltyController extends Controller
         if ($loyaltylevelExists) {
             DB::table('loyaltylevels')->where('loyaltylevelID', $loyaltyID)->update([
                 'title' => $title,
-                'checkpoints' => $checkpoints,
+                'min_points' => $min_points,
+                'max_points' => $max_points,
                 'badges' => $badge,
             ]);
             return response()->json(["success" => true, "message" => "Loyalty level updated successfully."]);

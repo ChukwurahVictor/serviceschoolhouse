@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Validator;
 use VIPSoft\Unzip\Unzip;
 use Carbon\Carbon;
+use ZipArchive;
 
 class SiteAdminController extends Controller
 {
@@ -290,62 +291,136 @@ class SiteAdminController extends Controller
 
     public function addModule(Request $req)
     {
+        // Validate that a file was uploaded
+        $params = $req->validate([
+            'folderzip' => 'required',
+            'moduleName' => 'required',
+            'moduleDescription' => 'required',
+            'courseID' => 'required',
+            'duration' => 'required',
+        ]);
+        
+
         $moduleName = $req->moduleName;
         $moduleDescription = $req->moduleDescription;
         $courseID = $req->courseID;
-        $duration=Carbon::now()->hour(0)->minute(0)->second($req->duration)->toTimeString();
+        $duration = $req->duration;
 
-        // Validate that a file was uploaded
-        $validator = Validator::make($req->file(), [
-            "folderzip" => "required"
-        ]);
-        if ($validator->fails()) {
-            return response()->json(["success" => false, "message" => "Module Folder not uploaded"], 400);
+        $duration= Carbon::now()->hour(0)->minute(0)->second($duration)->toTimeString();
+
+        $course = DB::table('course')->where('courseID', $courseID)->first();
+        if(!$course) {
+            return response()->json(["success" => false, "message" => "Course does not exist"]);
         }
-        $moduleFolderName = $req->file("folderzip")->getClientOriginalName();
-        // Customize "learningPlatformFolder" in config > filesystem.php
-        $moduleFolderPath = $req->file("folderzip")->storeAs("ModuleFolders", $moduleFolderName, "learningPlatformFolder");
 
-        // Checks if course exists
-        if (DB::table("course")->where("courseID", "=", $courseID)->exists()) {
-            // Checks if module already exists
-            if (DB::table("module")->where("courseID", "=", $courseID)->where("moduleName", "=", $moduleName)->doesntExist()) {
-
-                // Check of folder was uploaded successfully
-                if (!$moduleFolderPath) {
-                    return response()->json(["success" => false, "message" => "Folder not Uploaded"], 400);
-                } else {
-                    $foldername = explode(".", $moduleFolderName)[0];
-                    $folderPath = $this->getBaseUrl() . "/" . "ModuleFolders" . "/" . $foldername;
-
-                    $unzipper = new Unzip();
-                    // Unzip the zip folder uploaded above
-                    $files = $unzipper->extract(storage_path("../../") . $moduleFolderPath, storage_path("../../ModuleFolders"));
-                    // Check if Zip File still exists then delete
-                    if (File::exists(storage_path("../../") . $moduleFolderPath)) {
-                        File::delete(storage_path("../../") . $moduleFolderPath);
-                    }
-
-                    $folderPath = explode(":8000", $folderPath)[1]; // local
-                    // $folderPath = explode(".com", $folderPath)[1];
-                    $folderPath = "../../.." . $folderPath;
-                    $moduleID = DB::table("module")->insertGetId([
-                        "moduleName" => $moduleName, 
-                        "moduleDescription" => $moduleDescription, 
-                        "courseID" => $courseID, 
-                        "folder" => $folderPath,
-                        "duration" => $duration
-                    ]);
-
-                    return response()->json(["success" => true, "message" => "Module Added", "moduleID" => $moduleID]);
-                }
-            } else {
-                return response()->json(["success" => true, "message" => "Module already exist"], 400);
+        //Get the file name and extension
+        $folder_name = $req->file("folderzip")->getClientOriginalName();
+     
+        //Inbuilt Zip package... Extracts zip content, if successful, stores via the $storageDestinationPath else throws an exception
+        $zip = new ZipArchive();
+        $status = $zip->open($req->file("folderzip")->getRealPath());
+        if ($status !== true) {
+         throw new \Exception($status);
+        }
+        else{
+            // Folder path matches ssh modules path
+            $storageDestinationPath= storage_path("../../ModuleFolders/" . "/" . $course->courseName);
+       
+            //If folder doesnt exist, it creates a new folder, ignore vs code 'undefined type file' error 
+            if (!\File::exists( $storageDestinationPath)) {
+                \File::makeDirectory($storageDestinationPath, 0755, true);
             }
-        } else {
-            return response()->json(["success" => false, "message" => "Course does not exist"], 400);
+            //Zip package extracts content to folder
+            $zip->extractTo($storageDestinationPath);
+            $zip->close();
+
+            //We get the folder name without extension and add on to the base url. This is saved in the db
+            $folder_name = explode(".", $folder_name)[0];
+            $folderPath = "../../../" . "ModuleFolders" . "/" . $course->courseName . "/". $folder_name;
+
+            //Add data to db
+            $moduleID = DB::table("module")->insertGetId(["moduleName" => $moduleName, "moduleDescription" => $moduleDescription, "courseID" => $courseID, "folder" => $folderPath,"duration" =>$duration]);
+
+            return response()->json(["success" => true, "message" => "Module Added", "moduleID" => $moduleID]);
         }
     }
+
+    // public function addModule(Request $req)
+    // {
+    //     $moduleName = $req->moduleName;
+    //     $moduleDescription = $req->moduleDescription;
+    //     $courseID = $req->courseID;
+    //     $duration=Carbon::now()->hour(0)->minute(0)->second($req->duration)->toTimeString();
+
+    //     // Validate that a file was uploaded
+    //     $validator = Validator::make($req->file(), [
+    //         "folderzip" => "required"
+    //     ]);
+    //     if ($validator->fails()) {
+    //         return response()->json(["success" => false, "message" => "Module Folder not uploaded"], 400);
+    //     }
+        
+    //     $moduleFolderName = $req->file("folderzip")->getClientOriginalName();
+    //     // Customize "learningPlatformFolder" in config > filesystem.php
+    //     $moduleFolderPath = $req->file("folderzip")->storeAs("ModuleFolders", $moduleFolderName, "learningPlatformFolder");
+
+    //     // Checks if course exists
+    //     $course = DB::table("course")->where("courseID", "=", $courseID)->first();
+    //     if (DB::table("course")->where("courseID", "=", $courseID)->exists()) {
+    //         // Checks if module already exists
+    //         if (DB::table("module")->where("courseID", "=", $courseID)->where("moduleName", "=", $moduleName)->doesntExist()) {
+
+    //             // Check of folder was uploaded successfully
+    //             if (!$moduleFolderPath) {
+    //                 return response()->json(["success" => false, "message" => "Folder not Uploaded"], 400);
+    //             } else {
+    //                 $foldername = explode(".", $moduleFolderName)[0];
+    //                 $folderPath = $this->getBaseUrl() . "/" . "ModuleFolders" . "/" . $course->courseName . "/" . $foldername;
+    //                 // return $folderPath;
+
+    //                 $zip = new ZipArchive();
+    //                 $status = $zip->open($req->file("folderzip")->getRealPath());
+    //                 if ($status !== true) {
+    //                     throw new \Exception($status);
+    //                 }
+
+    //                 $storageDestinationPath= storage_path("../../ModuleFolders" . "/" . $course->courseName);
+       
+    //                 if (!\File::exists( $storageDestinationPath)) {
+    //                     \File::makeDirectory($storageDestinationPath, 0755, true);
+    //                 }
+
+    //                 $zip->extractTo($storageDestinationPath);
+    //                 $zip->close();
+
+    //                 // $unzipper = new Unzip();
+    //                 // // Unzip the zip folder uploaded above
+    //                 // $files = $unzipper->extract(storage_path("../../") . $moduleFolderPath, storage_path("../../ModuleFolders"));
+    //                 // // Check if Zip File still exists then delete
+    //                 // if (File::exists(storage_path("../../") . $moduleFolderPath)) {
+    //                 //     File::delete(storage_path("../../") . $moduleFolderPath);
+    //                 // }
+
+    //                 $folderPath = explode(":8000", $folderPath)[1]; // local
+    //                 // $folderPath = explode(".com", $folderPath)[1];
+    //                 $folderPath = "../../.." . $folderPath;
+    //                 $moduleID = DB::table("module")->insertGetId([
+    //                     "moduleName" => $moduleName, 
+    //                     "moduleDescription" => $moduleDescription, 
+    //                     "courseID" => $courseID, 
+    //                     "folder" => $folderPath,
+    //                     "duration" => $duration
+    //                 ]);
+
+    //                 return response()->json(["success" => true, "message" => "Module Added", "moduleID" => $moduleID]);
+    //             }
+    //         } else {
+    //             return response()->json(["success" => true, "message" => "Module already exist"], 400);
+    //         }
+    //     } else {
+    //         return response()->json(["success" => false, "message" => "Course does not exist"], 400);
+    //     }
+    // }
     
 
     public function editModule(Request $req)
@@ -574,24 +649,31 @@ class SiteAdminController extends Controller
     public function assignCoursesToCompany(Request $req)
     {
         $companyID = $req->companyID;
-        // $courseID = $req->courseID;
         $courseDescriptions= $req->courseDescription;
-        // $seats = $req->seats;
-
+        $errors = [];
         if (!is_array($courseDescriptions)){
             return response()->json(["success" => false, "error" =>"Course description is not an array"],400);
         }
-        foreach($courseDescriptions as $courseDescription){
-            var_dump($courseID);
-            $courseID= $courseDescription->courseID;
-            
-            $seats=$courseDescription->seats;
 
-            DB::table("courseSeat")->insert(["seats" => $seats, "courseID" => $courseID]);
-
-            return response()->json(["success" => true, "message" => "Course Assigned successfully"]);
+        if(DB::table('company')->where('companyID', $companyID)->exists()) // check if company exists
+        {
+            foreach($courseDescriptions as $courseDescription){
+                $courseID= $courseDescription['courseID'];
+                $seats=$courseDescription['seats'];
+    
+                // check if course exists
+                $courseExists = DB::table("course")->where( "courseID", $courseID )->exists();
+                if ($courseExists) {
+                    DB::table("courseSeat")->insert(["seats" => $seats, "courseID" => $courseID, "companyID" => $companyID]);
+                } else {
+                    array_push($errors, "Course with course id " . $courseID . " does not exist");
+                }
+            }
+    
+            return response()->json(["success" => true, "message" => "Course Assigned successfully", "errors" => $errors]);
+        } else {
+            return response()->json([ "success" => false, "message" =>"Company does not exist" ]);
         }
-        return response()->json(["success" => false, "message" =>"Course Assign unsuccessful"]);
     }  
 
     public function  getCandidatesScores(Request $req)
