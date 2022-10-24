@@ -37,7 +37,6 @@ class EmailService
          'email' => "chukwurahvictor7@gmail.com",
          'body' => $body,
       ];
-      // return $details['body'];
 
       //$mailObject = new TestBook($request); // you can make php artisan make:mail MyMail
       Mail::to($details['email'])->send(new \App\Mail\CreateUser($details));
