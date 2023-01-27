@@ -22,7 +22,7 @@ return [
     // enable features within this package
     // - note that webhookreceiving requires emaillogging to actually do anything
     'enable' => [
-        'emaillogging' => env('POSTAL_ENABLE_EMAILLOG', true),
+        'emaillogging' => env('POSTAL_ENABLE_EMAILLOG', false),
         'webhookreceiving' => env('POSTAL_ENABLE_WEBHOOKRECEIVE', true),
     ],
 

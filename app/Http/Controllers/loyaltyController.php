@@ -5,15 +5,16 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
+
 class LoyaltyController extends Controller
 {
 
     public function fetchLoyalties(Request $req)
     {
-        $loyalties = DB::table('loyaltylevels')->get();
+        $loyalties = DB::table('loyaltyLevels')->get();
         $total = count($loyalties);
         if ($total > 0) {
-            return response()->json(["success" => true, "message" => "Loyalties fetched successfully.", "data" => $loyalties]);
+            return response()->json(["success" => true, "message" => "Loyalties fetched successfully.", $loyalties]);
         } else {
             return response()->json(["success" => true, "message" => "No loyalty level available"]);
         }
@@ -22,20 +23,13 @@ class LoyaltyController extends Controller
     public function createLoyalty(Request $req)
     {
         $title = $req->title;
-        $min_points = $req->min_points;
-        $max_points = $req->max_points;
-        $badge = $req->badge;
+        $points = $req->points;
 
-        $loyaltylevel = DB::table('loyaltylevels')->where('title', $title)->doesntExist();
-
-        if ($loyaltylevel) {
-            DB::table('loyaltylevels')->insert([
+        if (DB::table('loyaltyLevels')->where('title', $title)->orwhere('points', $points)->doesntExist()) {
+            DB::table('loyaltyLevels')->insert([
                 "title" => $title,
-                "min_points" =>$min_points,
-                "max_points" =>$max_points,
-                "badges" => $badge
+                "points" => $points
             ]);
-            return response()->json(["success" => true, "message" => "Loyalty level created successfully."], 201);
         } else {
             return response()->json(["success" => false, "message" => "Loyalty level already exists."], 400);
         }
@@ -45,10 +39,10 @@ class LoyaltyController extends Controller
     {
         $loyaltyID = $req->loyaltyID;
 
-        $loyaltylevelExists = DB::table('loyaltylevels')->where('loyaltylevelID', $loyaltyID)->exists();
+        $loyaltylevelExists = DB::table('loyaltyLevels')->where('loyaltyLevelID', $loyaltyID)->exists();
 
         if ($loyaltylevelExists) {
-            $loyaltylevel = DB::table('loyaltylevels')->where('loyaltylevelID', $loyaltyID)->get();
+            $loyaltylevel = DB::table('loyaltyLevels')->where('loyaltyLevelID', $loyaltyID)->get();
             return response()->json(["success" => true, "message" => "Loyalty level fetched successfully.", "data" => $loyaltylevel]);
         } else {
             return response()->json(["success" => false, "message" => "Loyalty level does not exist."], 400);
@@ -59,17 +53,15 @@ class LoyaltyController extends Controller
     {
         $loyaltyID = $req->loyaltyID;
         $title = $req->title;
-        $min_points = $req->min_points;
-        $max_points = $req->max_points;
+        $checkpoints = $req->checkpoints;
         $badge = $req->badge;
 
-        $loyaltylevelExists = DB::table('loyaltylevels')->where('loyaltylevelID', $loyaltyID)->exists();
+        $loyaltylevelExists = DB::table('loyaltyLevels')->where('loyaltyLevelID', $loyaltyID)->exists();
 
         if ($loyaltylevelExists) {
-            DB::table('loyaltylevels')->where('loyaltylevelID', $loyaltyID)->update([
+            DB::table('loyaltyLevels')->where('loyaltyLevelID', $loyaltyID)->update([
                 'title' => $title,
-                'min_points' => $min_points,
-                'max_points' => $max_points,
+                'checkpoints' => $checkpoints,
                 'badges' => $badge,
             ]);
             return response()->json(["success" => true, "message" => "Loyalty level updated successfully."]);
@@ -82,8 +74,8 @@ class LoyaltyController extends Controller
     {
         $loyaltyID = $req->loyaltyID;
 
-        if (DB::table('loyaltylevels')->where('loyaltyID', $loyaltyID)->exists()) {
-            DB::table('loyaltylevels')->where('loyaltyID', $loyaltyID)->delete();
+        if (DB::table('loyaltyLevels')->where('loyaltyLevelID', $loyaltyID)->exists()) {
+            DB::table('loyaltyLevels')->where('loyaltyLevelID', $loyaltyID)->delete();
             return response()->json(["success" => false, "message" => "Loyalty level deleted successfully."]);
         } else {
             return response()->json([ "success" => false, "message" => "Loyalty level does not exist."], 400);

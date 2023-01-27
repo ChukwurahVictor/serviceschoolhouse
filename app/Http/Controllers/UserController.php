@@ -2,16 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\GetCompanyService;
 use App\Services\EmailService;
-
-use Exception;
+use App\Services\GetCompanyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Validator;
+
 class UserController extends Controller
 {
+
     private function isAdmin($token)
     {
         // Checks if token has admin privileges and return companyID of Admin
@@ -29,25 +29,25 @@ class UserController extends Controller
             'name' => $firstname,
             'email' => $email,
             'password' => $password,
-            'website_link' => env('APP_URL'),
-            'login_link' => env('APP_URL').'/login'
+            'website_link' => 'https://serviceschoolhouse.com',
+            'login_link' => 'https: //serviceschoolhouse.com/login',
         ];
         Mail::to($email)->send(new \App\Mail\CreateUser($details));
     }
 
-    public function testmailCreate()
-    {
-        //$email = 'oluwatemilorun.adewuyi@9ijakids.com';
-        $email = 'ucheofunne.o@gmail.com';
-        $details = [
-            'name' => 'Temi',
-            'email' => $email,
-            'password' => 'LearningPlatform',
-            'website_link' => env('APP_URL'),
-            'login_link' => env('APP_URL').'/login'
-        ];
-        Mail::to($email)->send(new \App\Mail\CreateUser($details));
-    }
+    // public function testmailCreate()
+    // {
+    //     $email = 'Oluwatemilorun.adewuyi@9ijakids.com';
+    //     //$email = 'ucheofunne.o@gmail.com';
+    //     $details = [
+    //         'name' => 'Temi',
+    //         'email' => $email,
+    //         'password' => 'LearningPlatform',
+    //         'website_link' => env('APP_URL'),
+    //         'login_link' => env('APP_URL') . '/login',
+    //     ];
+    //     Mail::to($email)->send(new \App\Mail\CreateUser($details));
+    // }
 
     public function __construct(GetCompanyService $getCompanyService, EmailService $emailService)
     {
@@ -76,73 +76,52 @@ class UserController extends Controller
         if (DB::table("users")->where("userEmail", "=", $email)->doesntExist()) {
             $query = DB::table("users")->join("company", "users.companyID", "=", "company.companyID")->select(["users.userID", "company.emailSuffix", "company.companyID"])->where("users.token", "=", $token)->where("users.userRoleID", "=", 1)->get();
 
-            if ($query[0]->emailSuffix === $email_suffix) {
-                $companyID = $query[0]->companyID;
-                $queryForGroupCategory = DB::table("groupRole")->where("roleName", "=", $roleName)->get();
+            // if ($query[0]->emailSuffix === $email_suffix) {
+            $companyID = $query[0]->companyID;
+            $queryForGroupCategory = DB::table("groupRole")->where("roleName", "=", $roleName)->get();
 
-                //Get user groupRoleID for either Agent, Supervisor, or Manager
-                $groupRoleId = $queryForGroupCategory[0]->groupRoleId;
+            //Get user groupRoleID for either Agent, Supervisor, or Manager
+            $groupRoleId = $queryForGroupCategory[0]->groupRoleId;
 
-                // check if group belongs to company
-                $checkGroup = DB::table("group")->where("companyID", "=", $companyID)->where("groupID", $groupid)->first();
-                if(!$checkGroup) {
-                    return response()->json(["success" => false, "message" => "Group does not belong to company."]);
-                }
-                $company = DB::table('company')->where('companyID', $companyID)->first(); //get company
-
-                // calculate cost and check if company has enough funds
-                $cost = DB::table('groupEnrolment')->join('course', 'groupEnrolment.courseID', '=', 'course.courseID')->where('groupID', $groupid)->sum('course.price');
-                if ($company->wallet < $cost) {
-                    return response()->json(["success" => false, "message" => "Insufficient funds."]);
-
-                }
-
-                // insert user to user table and get the id
-                // $user = DB::table("users")->insertGetId([
-                //     "userFirstName" => $firstname, 
-                //     "userLastName" => $lastname, 
-                //     "userEmail" => $email, 
-                //     "userPhone" => $tel, 
-                //     "userGender" => $gender, 
-                //     "userGrade" => $grade, 
-                //     "userPassword" => $hash, 
-                //     "userRoleID" => 2, 
-                //     "groupRoleId" => $groupRoleId, 
-                //     "location" => $location, 
-                //     "companyID" => $companyID,  
-                //     "employeeID" => $employeeID, 
-                //     "token" => $newtoken
-                // ]);
-
-                $user = DB::table('users')->where("userID", '226')->first();
-
-                $template = $this->emailService->getMailTemplate("new_user"); //send company id
-                return $this->emailService->sendMail($template, $user, null);
-                
-                DB::table("userGroup")->insert(["userID" => $user, "groupID" => $groupid]); // add user to group
-                
-                $balance = $company->wallet - $cost;
-                DB::table('company')->where('companyID', $companyID)->update(["wallet" => $balance ]); // deduct cost and update company's wallet
-
-                $courses = DB::table('groupEnrolment')->join('course', 'groupEnrolment.courseID', '=', 'course.courseID')->where('groupID', $groupid)->get();
-
-                //Add to billing table
-                foreach($courses as $course) {
-                    $billing = DB::table('billing')->insert([
-                        "companyID" => $companyID,
-                        "userID" => $user,
-                        "cost" => $course->price,
-                        "courseID" => $course->courseID,
-                    ]);
-                }
-
-
-                // $this->sendUserCreationEmail($firstname, $email, $employeeID);
-
-                return response()->json(["success" => true, "message" => "User Account Created"]);
-            } else {
-                return response()->json(["success" => false, "message" => "User Email not Company Email"], 400);
+            $checkGroup = DB::table("group")->where("companyID", "=", $companyID)->where("groupID", $groupid)->first();
+            if (!$checkGroup) {
+                return response()->json(["success" => false, "message" => "Group does not belong to company."]);
             }
+            $company = DB::table('company')->where('companyID', $companyID)->first();
+
+            $cost = DB::table('groupEnrolment')->join('course', 'groupEnrolment.courseID', '=', 'course.courseID')->where('groupID', $groupid)->sum('course.price');
+            if ($company->wallet < $cost) {
+                return response()->json(["success" => false, "message" => "Insufficient funds."]);
+
+            }
+
+            $user = DB::table("users")->insertGetId(["userFirstName" => $firstname, "userLastName" => $lastname, "userEmail" => $email, "userPhone" => $tel, "userGender" => $gender, "userGrade" => $grade, "userPassword" => $hash, "userRoleID" => 2, "groupRoleId" => $groupRoleId, "location" => $location, "companyID" => $companyID, "employeeID" => $employeeID, "token" => $newtoken]);
+
+            // $template = $this->emailService->getMailTemplate("user_registration"); //send company id
+            // $this->emailService->sendMail($template, 'user_registration', $user, null);
+            // $this->sendUserCreationEmail($firstname, $email, $employeeID);
+
+            DB::table("userGroup")->insert(["userID" => $user, "groupID" => $groupid]);
+
+            $balance = $company->wallet - $cost;
+            DB::table('company')->where('companyID', $companyID)->update(["wallet" => $balance]);
+
+            $courses = DB::table('groupEnrolment')->join('course', 'groupEnrolment.courseID', '=', 'course.courseID')->where('groupID', $groupid)->get();
+
+            //Add to billing table
+            foreach ($courses as $course) {
+                $billing = DB::table('billing')->insert([
+                    "companyID" => $companyID,
+                    "userID" => $user,
+                    "cost" => $course->price,
+                    "courseID" => $course->courseID,
+                ]);
+            }
+
+            return response()->json(["success" => true, "message" => "User Account Created"]);
+            // } else {
+            // return response()->json(["success" => false, "message" => "User Email not Company Email"], 400);
+            // }
         } else {
             return response()->json(["success" => false, "message" => "User Already Registered"], 400);
         }
@@ -164,8 +143,9 @@ class UserController extends Controller
 
         if ($userToken) {
             $queryUserTable = DB::table("users")->where("token", "=", $userToken)->orWhere("userEmail", "=", $email)->get();
-        } else
+        } else {
             $queryUserTable = DB::table("users")->where("userEmail", "=", $email)->get();
+        }
 
         if (count($queryUserTable) === 1) {
             $query = DB::table("users")->join("company", "users.companyID", "=", "company.companyID")->select(["company.emailSuffix", "company.companyID"])->where("users.token", "=", $adminToken)->where("users.userRoleID", "=", 1)->get();
@@ -173,18 +153,20 @@ class UserController extends Controller
             $adminCompanyID = $query[0]->companyID;
             $userCompanyID = $queryUserTable[0]->companyID;
             if ($adminCompanyID === $userCompanyID) {
-                if ($query[0]->emailSuffix === $email_suffix) {
-                    DB::table("users")->where("userID", "=", $userID)->update([
-                        "userFirstName" => $firstname, "userLastName" => $lastname, "userEmail" => $email,
-                        // "userPhone" => $tel, 
-                        "userGender" => $gender, "userGrade" => $grade, "employeeID" => $employeeID, "location" => $location
-                    ]);
-                    return response()->json(["success" => true, "message" => "User successfully updated"]);
-                } else {
-                    return response()->json(["success" => false, "message" => "User Email not Company Email"], 400);
-                }
-            } else
+                // if ($query[0]->emailSuffix === $email_suffix) {
+                DB::table("users")->where("userID", "=", $userID)->update([
+                    "userFirstName" => $firstname, "userLastName" => $lastname, "userEmail" => $email,
+                    // "userPhone" => $tel,
+                    "userGender" => $gender, "userGrade" => $grade, "employeeID" => $employeeID, "location" => $location,
+                ]);
+                return response()->json(["success" => true, "message" => "User successfully updated"]);
+                // } else {
+                //     return response()->json(["success" => false, "message" => "User Email not Company Email"], 400);
+                // }
+            } else {
                 return response()->json(["success" => true, "message" => "Admin does not belong to this user's company"]);
+            }
+
         } else {
             return response()->json(["success" => false, "message" => "User does not exist"], 400);
         }
@@ -199,15 +181,17 @@ class UserController extends Controller
         $adminCompanyID = $table[0]->companyID;
 
         $query = DB::table("users")->where("userID", "=", $userID)
-            // ->orWhere("token", "=", $userToken)
+        // ->orWhere("token", "=", $userToken)
             ->get();
         if (count($query) === 1) {
             $userCompanyID = $query[0]->companyID;
             if ($adminCompanyID === $userCompanyID) {
                 DB::table("users")->where("userID", "=", $userID)->delete();
                 return response()->json(["success" => true, "message" => "User successfully deleted"]);
-            } else
+            } else {
                 return response()->json(["success" => true, "message" => "Admin does not belong to this users company"]);
+            }
+
         } else {
             return response()->json(["success" => false, "message" => "User does not exist"], 400);
         }
@@ -235,17 +219,17 @@ class UserController extends Controller
         $page_number = $req->page_number;
         $page_size = $req->page_size;
         $offset = ($page_number - 1) * $page_size;
-        $companyID =  $this->getCompanyID($token);
+        $companyID = $this->getCompanyID($token);
 
         $users = DB::table("users")
-            // ->join("groupRole", "users.groupRoleId", "=", "users.userRoleID")
+        // ->join("groupRole", "users.groupRoleId", "=", "users.userRoleID")
             ->where("companyID", "=", $companyID)->where(function ($query) use ($searchParams) {
-                $query->where("employeeID", "like", "%" . $searchParams . "%")
-                    ->orWhere("userFirstName", "like", "%" . $searchParams . "%")
-                    ->orWhere("userLastname", "like", "%" . $searchParams . "%");
-            })->select( "userID", "userFirstName", "userLastname", // "roleName as userRole",
-             "userEmail", "userGender", "userGrade", "employeeID", "location", "token AS usertoken"
-            )->skip($offset)->take($page_size)->get();
+            $query->where("employeeID", "like", "%" . $searchParams . "%")
+                ->orWhere("userFirstName", "like", "%" . $searchParams . "%")
+                ->orWhere("userLastname", "like", "%" . $searchParams . "%");
+        })->select("userID", "userFirstName", "userLastname", // "roleName as userRole",
+            "userEmail", "userGender", "userGrade", "employeeID", "location", "token AS usertoken"
+        )->skip($offset)->take($page_size)->get();
         $total = count($users);
         if (count($users) > 0) {
             return response()->json(["success" => true, "users" => $users, "total" => $total]);
@@ -254,12 +238,13 @@ class UserController extends Controller
         }
     }
 
-    public function bulkUpload(Request $request) {
+    public function bulkUpload(Request $request)
+    {
         $token = $request->token;
         $checkToken = $this->isAdmin($token);
 
         $companyID = $this->getCompanyID($token);
-        
+
         $extension = $request->file('upload_file')->getClientOriginalExtension();
         if ($extension == 'csv') {
             $upload = $request->file('upload_file');
@@ -270,15 +255,14 @@ class UserController extends Controller
             $Errors = [];
             $Success = [];
 
+            while (($columns = fgetcsv($file, 1000, ",")) !== false) {
+                if ($headerLine) {$headerLine = false;} else {
 
-            while (($columns = fgetcsv($file, 1000, ","))!== FALSE) {
-                if($headerLine) { $headerLine = false; }
-                
-                else {
-                    
-                    if ($columns[0] == "")
+                    if ($columns[0] == "") {
                         continue;
-                    $data =  $columns;
+                    }
+
+                    $data = $columns;
                     foreach ($data as $key => $value) {
                         $employeeID = $data[0];
                         $userFirstName = $data[1];
@@ -305,136 +289,90 @@ class UserController extends Controller
                     if (DB::table("users")->where("userEmail", "=", $userEmail)->doesntExist()) {
                         $query = DB::table("users")->join("company", "users.companyID", "=", "company.companyID")->select(["users.userID", "company.emailSuffix", "company.companyID"])->where("users.token", "=", $token)->where("users.userRoleID", "=", 1)->get();
 
-                        if ($query[0]->emailSuffix === $userEmail_suffix) {
-                            $companyID = $query[0]->companyID;
-                            $queryForGroupCategory = DB::table("groupRole")->where("roleName", "=", $roleName)->get();
+                        // if ($query[0]->emailSuffix === $userEmail_suffix) {
+                        $companyID = $query[0]->companyID;
+                        $queryForGroupCategory = DB::table("groupRole")->where("roleName", "=", $roleName)->get();
 
-                            // check if group belongs to company
-                            $group = DB::table('group')->where('groupName', $groupName)->where("companyID", "=", $companyID)->first(); //get group
-                            if(!$group) {
-                                array_push($Errors, $groupName . " does not belong to company. ", $group->groupID, $companyID);
-                            } else {
-                                $company = DB::table('company')->where('companyID', $companyID)->first(); //get company
-    
-                                // calculate cost and check if company has enough funds
-                                $cost = DB::table('groupEnrolment')->join('course', 'groupEnrolment.courseID', '=', 'course.courseID')->where('groupID', $group->groupID)->sum('course.price');
-                                if ($company->wallet < $cost) {
-                                    array_push($Errors, "Insufficient funds for " . $userEmail);
-                                } else {
-                                    $user = DB::table('users')->insertGetId([
-                                        "userFirstName" => $userFirstName, 
-                                        "userLastName" => $userLastName, 
-                                        "userEmail" => $userEmail, 
-                                        "userGender" => $userGender, 
-                                        "userRoleID" => 2, 
-                                        "groupRoleId" => $groupRoleId, 
-                                        "userGrade" => $userGrade,  
-                                        "location" => $location, 
-                                        "companyID" => $companyID, 
-                                        "userPassword" => $hash, 
-                                        "employeeID" => $employeeID,
-                                        "token" => $userToken
-                                    ]);
-                                    
-                                    DB::table("userGroup")->insert(["userID" => $user, "groupID" => $group->groupID]);
-                                    
-                                    $balance = $company->wallet - $cost;
-                                    DB::table('company')->where('companyID', $companyID)->update(["wallet" => $balance]);
-
-                                    $courses = DB::table('groupEnrolment')->join('course', 'groupEnrolment.courseID', '=', 'course.courseID')->where('groupID', $group->groupID)->get();
-
-                                    //Add to billing table
-                                    foreach($courses as $course) {
-                                        $billing = DB::table('billing')->insert([
-                                            "companyID" => $companyID,
-                                            "userID" => $user,
-                                            "cost" => $course->price,
-                                            "courseID" => $course->courseID,
-                                        ]);
-                                    }
-
-                                    // $user = DB::table('users')->where("userID", $user)->first();
-
-                                    // $template = $this->emailService->getMailTemplate("new_user"); //send company id
-                                    // return $this->emailService->sendMail($template, $user, null);
-    
-                                    $this->sendUserCreationEmail($userFirstName, $userEmail, $employeeID);
-                                    
-                                    array_push($Success, "User Account Created for " . $userEmail);
-                                }
-                            }
+                        // check if group belongs to company
+                        $group = DB::table('group')->where('groupName', $groupName)->where("companyID", "=", $companyID)->first(); //get group
+                        if (!$group) {
+                            array_push($Errors, $groupName . " does not belong to company. ", $group->groupID, $companyID);
                         } else {
-                                array_push($Errors, $userEmail." not company Email ");   
+                            $company = DB::table('company')->where('companyID', $companyID)->first(); //get company
+
+                            // calculate cost and check if company has enough funds
+                            $cost = DB::table('groupEnrolment')->join('course', 'groupEnrolment.courseID', '=', 'course.courseID')->where('groupID', $group->groupID)->sum('course.price');
+                            if ($company->wallet < $cost) {
+                                array_push($Errors, "Insufficient funds for " . $userEmail);
+                            } else {
+                                $user = DB::table('users')->insertGetId([
+                                    "userFirstName" => $userFirstName,
+                                    "userLastName" => $userLastName,
+                                    "userEmail" => $userEmail,
+                                    "userGender" => $userGender,
+                                    "userRoleID" => 2,
+                                    "groupRoleId" => $groupRoleId,
+                                    "userGrade" => $userGrade,
+                                    "location" => $location,
+                                    "companyID" => $companyID,
+                                    "userPassword" => $hash,
+                                    "employeeID" => $employeeID,
+                                    "token" => $userToken,
+                                ]);
+
+                                DB::table("userGroup")->insert(["userID" => $user, "groupID" => $group->groupID]);
+
+                                $balance = $company->wallet - $cost;
+                                DB::table('company')->where('companyID', $companyID)->update(["wallet" => $balance]);
+
+                                $courses = DB::table('groupEnrolment')->join('course', 'groupEnrolment.courseID', '=', 'course.courseID')->where('groupID', $group->groupID)->get();
+
+                                //Add to billing table
+                                foreach ($courses as $course) {
+                                    $billing = DB::table('billing')->insert([
+                                        "companyID" => $companyID,
+                                        "userID" => $user,
+                                        "cost" => $course->price,
+                                        "courseID" => $course->courseID,
+                                    ]);
+                                }
+
+                                // $this->sendUserCreationEmail($userFirstName, $userEmail, $employeeID);
+
+                                array_push($Success, "User Account Created for " . $userEmail);
                             }
-                    }else 
-                        array_push($Errors, "We found a duplicate for ".$userEmail);     
+                        }
+                        // } else {
+                        //     array_push($Errors, $userEmail . " not company Email ");
+                        // }
+                    } else {
+                        array_push($Errors, "We found a duplicate for " . $userEmail);
+                    }
+
                 }
             }
 
             if ($Errors) {
                 return response()->json(["success" => true, "error" => $Errors]);
-            } elseif($Success && $Errors) {
+            } elseif ($Success && $Errors) {
                 return response()->json(["success" => true, "message" => "successful", "error" => $Errors]);
-            } else
-                return response()->json(["success" => true, "message" => "successful"]);
-        } else 
-            return response()->json(["success" => true, "error" => "file format not supported"]);
-    }
-
-    public function convertSinglePassword(Request $req) {
-        $userID = $req->userID;
-        $user = DB::table("users")->where("userID", "=", $userID)->get();
-        
-        if(DB::table("users")->where("userID", "=", $userID)->exists()) {
-            $hash = password_hash($user[0]->employeeID, PASSWORD_DEFAULT);
-
-            DB::table("users")->where("userID", "=", $userID)->update([
-                "userPassword" => $hash
-            ]);
-
-            $this->sendUserCreationEmail($user[0]->userFirstName, $user[0]->userEmail, $user[0]->employeeID);
-
-            return response()->json(["success" => true, "message" => "password changed and email sent successfully."], 200);
-        } else {
-            return response()->json(["success" => false, "message" => "User not found."], 400);
-        }
-    }
-
-    public function convertGroupPassword(Request $req) {
-        $companyID = $req->companyID;
-        $users = DB::table("users")->where("companyID", "=", $companyID)->get();
-        $success = [];
-        $errors = [];
-        
-        foreach ($users as $user) {
-            if(DB::table("users")->where("userID", "=", $user->userID)->where("companyID", "=", $companyID)->exists()) {
-                $hash = password_hash($user->employeeID, PASSWORD_DEFAULT);
-
-                DB::table("users")->where("userID", "=", $user->userID)->where("companyID", "=", $companyID)->update([
-                    "userPassword" => $hash
-                ]);
-
-                $this->sendUserCreationEmail($user->userFirstName, $user->userEmail, $user->employeeID);
-                array_push($success, "password changed for user " . $user->userEmail);
             } else {
-                array_push($errors, $user->userEmail . " not found.");
+                return response()->json(["success" => true, "message" => "successful"]);
             }
+
+        } else {
+            return response()->json(["success" => true, "error" => "file format not supported"]);
         }
-        if ($errors) {
-            return response()->json(["success" => false, "error" => $errors]);
-        } elseif($success && $errors) {
-            return response()->json(["success" => true, "message" => "successful", "error" => $errors]);
-        } else
-            return response()->json(["success" => true, "message" => "password changed and email sent successfully."], 200);
+
     }
-    
+
     public function getCompany(Request $req)
     {
         $token = $req->token;
         $companyID = $this->getCompanyID($token);
         $company = $this->getCompanyService->getCompany($companyID);
 
-        if($company) {
+        if ($company) {
             return response()->json(["success" => true, "message" => "Company fetched successfully.", "data" => $company]);
         } else {
             return response()->json(["success" => false, "message" => "Company not found."], 400);
@@ -445,39 +383,35 @@ class UserController extends Controller
     {
         $token = $req->token;
         $companyID = $this->getCompanyID($token);
-        $currentMonth = date('m');
-        $currentYear = date('Y');
-        $month = $req->input('month', $currentMonth); // set current month as default
-        $year = $req->input('year', $currentYear); // set current year as default
+        $month = $req->input('month');
+        $year = $req->input('year');
         $userID = $req->userID;
         $courseID = $req->courseID;
 
-        $query = DB::table('billing');
-        if($userID)
-        {
+        $query = DB::table('billing')->where('companyID', $companyID);
+
+        if ($userID) {
             $query->where('userID', $userID);
         }
 
-        if($month)
-        {
+        if ($month) {
             $query->whereRaw('MONTH(created_at) = ?', [$month]);
         }
 
-        if($year)
-        {
+        if ($year) {
             $query->whereRaw('YEAR(created_at) = ?', [$year]);
         }
 
-        if($courseID)
-        {
+        if ($courseID) {
             $query->where('courseID', $courseID);
         }
 
         $total = $query->sum('cost');
         $billings = $query->get();
-        
-        if(count($billings) > 0) {
-            return response()->json(["success" => true, "data" => $billings, "total" => $total]);
+        // $billings = $query->simplePaginate(15); //paginate record
+
+        if (count($billings) > 0) {
+            return response()->json(["success" => true, "data" => $billings, "totalCost" => $total]);
         } else {
             return response()->json(["success" => true, "message" => "No Billing available"]);
         }
@@ -491,37 +425,172 @@ class UserController extends Controller
             ->select('userBadges.points', 'loyaltyLevels.title')
             ->join('loyaltyLevels', 'loyaltyLevels.loyaltylevelID', '=', 'userBadges.loyaltylevelID')
             ->where('userBadges.userID', '=', $userID)->first();
-        if(!$loyaltyLevel) {
-            return response()->json([ "success" => false, "message" => "No loyalty level found." ]);
+        if (!$loyaltyLevel) {
+            return response()->json(["success" => false, "message" => "No loyalty level found."]);
         }
-        return response()->json([ "success" => true, "data" => $loyaltyLevel ]);
+        return response()->json(["success" => true, "data" => $loyaltyLevel]);
+    }
+
+    public function getCompanyTemplates(Request $req)
+    {
+        $token = $req->token;
+        $companyID = $this->getCompanyID($token);
+
+        $templates = DB::table('emailTemplates')->where('companyID', $companyID)->get();
+        if (!$templates) {
+            return response()->json(["success" => false, "message" => "No Template found."], 400);
+        }
+
+        return response()->json(["success" => true, "message" => "Templates fetched successfully.", "templates" => $templates], 200);
+    }
+
+    public function getTemplate(Request $req)
+    {
+        $token = $req->token;
+        $companyID = $this->getCompanyID($token);
+        $type = $req->type;
+
+        $template = DB::table('emailTemplates')->where('type', $type)->where('companyID', $companyID)->first();
+        if (!$template) {
+            return response()->json(["success" => false, "message" => "No Template found."], 400);
+        }
+
+        return response()->json(["success" => true, "message" => "Template fetched successfully.", "template" => $template], 200);
     }
 
     public function sendCustomMail(Request $req)
     {
-        $mailBody = $req->mailBody;
-        $users= $req->users;
+        $body = $req->body;
+        $subject = $req->subject;
+        $users = $req->users;
         $errors = [];
         $success = [];
 
-        if (!is_array($users)){
-            return response()->json(["success" => false, "error" =>"Users is not an array"], 400);
+        $validator = Validator::make($req->all(), [
+            'body' => 'required',
+            'subject' => 'required',
+            'users.*' => 'required',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->all()]);
         }
 
-        foreach($users as $user){
-            $this->emailService->sendMail($mailBody, $user, null);
-            array_push($success, "Email sent to " . $user);
+        if (!is_array($users)) {
+            return response()->json(["success" => false, "error" => "Users is not an array"], 400);
         }
+
+        foreach ($users as $user) {
+            $sendMail = $this->emailService->sendCustomMail($subject, $body, $user, null);
+            if ($sendMail) {
+                array_push($success, "Email sent to " . $user['userEmail']);
+            }
+            array_push($errors, "Error sending mail to " . $user['userEmail']);
+        }
+
+        if (count($errors) > 0) {
+            return response()->json(["success" => true, "message" => "Email sent successfully.", 'errors' => $errors], 200);
+        }
+
+        return response()->json(["success" => true, $success], 200);
     }
 
     public function editMailTemplate(Request $req)
     {
+        $token = $req->token;
         $type = $req->type;
         $subject = $req->subject;
         $body = $req->body;
+        $companyID = $this->getCompanyID($token);
 
-        $this->emailService->saveTemplate($type, $subject, $body);
+        $saveTemplate = $this->emailService->saveTemplate($type, $subject, $body, $companyID);
+        if ($saveTemplate) {
+            return response()->json(["success" => true, "message" => "Template updated successfully"]);
+        } else {
+            return response()->json(["success" => false, "message" => "Template update failed"]);
+        }
+    }
 
-        return response()->json(["success" => true, "message" => "Template updated successfully"]);
+    public function leaderboard(Request $req)
+    {
+        $token = $req->token;
+        $companyID = $this->getCompanyID($token);
+        $groupID = $req->groupID;
+
+        $checkToken = $this->isAdmin($token);
+        // return $checkToken;
+        if ($checkToken["isAdmin"]) {
+
+            if ($groupID) {
+                $table = DB::table('userBadges')->join('userGroup', "userBadges.userID", "=", "userGroup.userID")->join('users', 'userBadges.userID', "=", "users.userID")->where('userGroup.groupID', '=', $groupID)->select(['userBadges.userID', 'points', 'userFirstName', 'userLastName', 'loyaltylevelID', 'groupID'])->orderBy('points', 'desc')->get();
+
+                return response()->json(["success" => true, "data" => $table]);
+            }
+
+            $table = DB::table('userBadges')->join('users', "userBadges.userID", "=", "users.userID")->where('users.companyID', '=', $companyID)->select(['userBadges.userID', 'points', 'loyaltylevelID', 'userGroup.groupID', 'userFirstName', 'userLastName'])->orderBy('points', 'desc')->get();
+
+            return response()->json(["success" => true, "data" => $table]);
+        } else {
+            $userID = $this->getUserID($token);
+            $groupID = $this->getUserGroupID($userID);
+
+            $table = DB::table('userBadges')->join('userGroup', "userBadges.userID", "=", "userGroup.userID")->join('users', 'userBadges.userID', "=", "users.userID")->where('userGroup.groupID', '=', $groupID)->select('userBadges.userID', 'points', 'userGroup.groupID', 'userFirstName', 'userLastName', 'loyaltyLevelID')->orderBy('points', 'desc')->get();
+
+            return response()->json(["success" => true, "data" => $table]);
+        }
+
+    }
+
+    public function resetPassword(Request $req)
+    {
+        $userID = $req->userID;
+        $user = DB::table("users")->where("userID", "=", $userID)->first();
+        // return $user;
+        if (DB::table("users")->where("userID", "=", $userID)->exists()) {
+            $hash = password_hash($user->employeeID, PASSWORD_DEFAULT);
+
+            DB::table("users")->where("userID", "=", $user->userID)->update([
+                "userPassword" => $hash,
+            ]);
+
+            // $this->sendUserCreationEmail($user[0]->userFirstName, $user[0]->userEmail, $user[0]->employeeID);
+
+            // return response()->json(["success" => true, "message" => "password changed and email sent successfully."], 200);
+            return response()->json(["success" => true, "message" => "password reset successfully."], 200);
+        } else {
+            return response()->json(["success" => false, "message" => "User not found."], 400);
+        }
+    }
+
+    public function resetBulkPassword(Request $req)
+    {
+        $companyID = $req->companyID;
+        $users = DB::table("users")->where("companyID", "=", $companyID)->get();
+        $success = [];
+        $errors = [];
+
+        foreach ($users as $user) {
+            if (DB::table("users")->where("userID", "=", $user->userID)->where("companyID", "=", $companyID)->exists()) {
+                $hash = password_hash($user->employeeID, PASSWORD_DEFAULT);
+
+                DB::table("users")->where("userID", "=", $user->userID)->where("companyID", "=", $companyID)->update([
+                    "userPassword" => $hash,
+                ]);
+
+                // $this->sendUserCreationEmail($user->userFirstName, $user->userEmail, $user->employeeID);
+                array_push($success, "password changed for user " . $user->userEmail);
+            } else {
+                array_push($errors, $user->userEmail . " not found.");
+            }
+        }
+        if ($errors) {
+            return response()->json(["success" => false, "error" => $errors]);
+        } elseif ($success && $errors) {
+            return response()->json(["success" => true, "message" => "successful", "error" => $errors]);
+        } else {
+            return response()->json(["success" => true, "message" => "password reset successfully."], 200);
+        }
+
+        // return response()->json(["success" => true, "message" => "password changed and email sent successfully."], 200);
     }
 }

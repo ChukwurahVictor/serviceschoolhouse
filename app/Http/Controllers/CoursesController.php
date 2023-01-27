@@ -1,7 +1,6 @@
 <?php
 
 namespace App\Http\Controllers;
-
 use App\Services\EmailService;
 
 use Illuminate\Http\Request;
@@ -16,21 +15,8 @@ class CoursesController extends Controller
         $details = [
             'name' => $firstname,
             'email' => $email,
-            'website_link' => env('APP_URL'),
-            'login_link' => env('APP_URL').'/login'
-        ];
-        Mail::to($email)->send(new \App\Mail\AssignedACourse($details));
-    }
-
-    public function testmailAssign()
-    {
-        //return env('APP_URL').'/login';
-        $email = 'ucheofunne.o@gmail.com';
-        $details = [
-            'name' => 'Temi',
-            'email' => $email,
-            'website_link' => env('APP_URL'),
-            'login_link' => env('APP_URL').'/login'
+            'website_link' => 'https: //serviceschoolhouse.com',
+            'login_link' => 'https: //serviceschoolhouse.com/login'
         ];
         Mail::to($email)->send(new \App\Mail\AssignedACourse($details));
     }
@@ -67,9 +53,9 @@ class CoursesController extends Controller
 
     private function getSeats($companyID, $courseID)
     {
-        $query = DB::table("courseSeat")->where("companyID", "=", $companyID)->where("courseID", "=", $courseID)->get();
-        if (count($query) > 0) {
-            $totalSeats = $query[0]->seats;
+        $query = DB::table("courseSeat")->where("companyID", "=", $companyID)->where("courseID", "=", $courseID)->orderBy('courseSeatID', 'DESC')->first();
+        if ($query) {
+            $totalSeats = $query->seats;
         } else {
             $totalSeats = 0;
         }
@@ -110,45 +96,36 @@ class CoursesController extends Controller
             $checkUser =  $this->userExists($userID, $checkToken["companyID"]);
             // Checks if user exists for that company
             if ($checkUser["userExists"]) {
-                
+
                 // Check if course exists
                 if (DB::table("course")->where("courseID", "=", $courseID)->exists()) {
                     // $userID = $checkUser["userID"];
-                    
+
                     // Checks if user is already enrolled
                     if (DB::table("courseEnrolment")->where("userID", "=", $userID)->where("courseID", "=", $courseID)->doesntExist()) {
-                        
+ 
                         $companyID = $checkUser["companyID"];
-                        
+
                         $seats = $this->getSeats($companyID, $courseID);
                         // Check if there are available seats
                         if ($seats["Assigned"] < $seats["Total"]) {
                             $coursePrice = DB::table('course')->select('price')->where("courseID", "=", $courseID)->first();
                             $company = DB::table('company')->where('companyID', $checkToken["companyID"])->first();
-
+                            
                             if($company->wallet < $coursePrice->price)
                             {
                                 return response()->json(["success" => false, "message" => "Credit too low."], 400);
                             } else{
-                                // $user = DB::table("users")->where("userID", $userID)->first();
-                                // $course = DB::table("course")->where("courseID", $courseID)->first();
+                                $course = DB::table("course")->where("courseID", $courseID)->first();
                                 // $template = $this->emailService->getMailTemplate("assigned_course");
-                                // return $this->emailService->sendMail($template, $user, $course);
-                                $this->assignedACourse($checkUser["userEmail"], $checkUser["userFirstName"]);
+                                // $this->emailService->sendMail($template, 'assigned_course', $user, $course);
+                                // $this->assignedACourse($checkUser["userEmail"], $checkUser["userFirstName"]);
 
                                 DB::table("courseEnrolment")->insert(["courseID" => $courseID, "userID" => $userID, "companyID" => $checkToken["companyID"]]);
 
                                 $calExpense = $company->wallet - $coursePrice->price;
-                                // return $calExpense;
                                 DB::table('company')->where('companyID', $checkToken["companyID"])->update([
                                     'wallet' => $calExpense
-                                ]);
-
-                                $billing = DB::table('billing')->insert([
-                                    "companyID" => $companyID,
-                                    "userID" => $userID,
-                                    "cost" => $coursePrice->price,
-                                    "courseID" => $courseID,
                                 ]);
 
                                 return response()->json(["success" => true, "message" => "Enrollment successful"]);
@@ -156,7 +133,7 @@ class CoursesController extends Controller
                         }
                         return response()->json(["success" => false, "message" => "No more Course Seats!"], 400);
                     } else {
-                        return response()->json(["success" => false, "message" => "Already Enrolled"], 400);
+                        return response()->json(["success" => true, "message" => "Already Enrolled"]);
                     }
                 } else {
                     return response()->json(["success" => false, "message" => "Course does not exist"], 400);
@@ -233,6 +210,15 @@ class CoursesController extends Controller
                 // Checks if company is already enrolled in the course
                 if (DB::table("courseEnrolment")->where("userID", "=", $userID)->where("courseID", "=", $courseID)->doesntExist()) {
 
+                    // $previousSeats = DB::table("courseSeat")->where("companyID", "=", $companyID)->where("courseID", "=", $courseID)->orderBy('courseSeatID', 'DESC')->first();
+                    // if(!$previousSeats) {
+                    //     $previousSeatsCount = 0;
+                    // } else {
+                    //     $previousSeatsCount = $previousSeats->seats;
+                    // }
+                    // return $previousSeatsCount;
+                    // $totalSeats = $previousSeatsCount + $seats;
+
                     DB::table("courseSeat")->insert(["courseID" => $courseID, "companyID" => $companyID, "seats" => $seats]);
                     DB::table("courseEnrolment")->insert(["courseID" => $courseID, "companyID" => $companyID, "userID" => $userID]);
 
@@ -258,30 +244,66 @@ class CoursesController extends Controller
             ->join("course", "courseEnrolment.courseID", "=", "course.courseID")
             // ->leftJoin("courseTrackerLog", "courseTrackerLog.moduleID", "=", "module.moduleID")
             // count(moduleName) as no_of_modules, SUM(courseTrackerLog.status = 'pass') as modules_completed, 
-            ->selectRaw("course.courseID, course.courseName, course.courseDescription, course.duration, course.courseType, count(moduleName) as no_of_modules, any_value(users.userID) as userID, any_value(courseEnrolment.created_at) as created_at")->where("users.token", "=", $token)
+            ->selectRaw("course.courseID, course.courseName, course.courseDescription, course.duration, course.courseType, count(moduleName) as no_of_modules, any_value(users.userID) as userID, any_value(courseEnrolment.created_at) as created_at")
+            ->where("users.token", "=", $token)
             ->groupBy("module.courseID")
             ->get();
-
             $getFirstLogin = DB::table("login_logs")->join("users", "email","=", "userEmail")->where("token", "=", $token)->where("status", "=", 200)->count();
-
+            
             $getFirstLogin === 1 ? $firstLogin = true : $firstLogin = false;
    
             foreach ($query as $row) {
                 $courseID = $row->courseID;
                 $userID = $row->userID;
+                // $query2 = DB::table("courseTrackerLog")
+                // ->join("module", "courseTrackerLog.moduleID", "=", "module.moduleID")
+                // ->join("course", "module.courseID", "=", "course.courseID")
+                // ->selectRaw("count(distinct(courseTrackerLog.moduleID)) as modules_completed")
+                // ->where("userID", "=", $userID)
+                // ->where("course.courseID", "=", $courseID)
+                // // ->where("status", "=", "pass")
+                // ->where("score", ">=", 65)
+                // ->get();
                 $query2 = DB::table("courseTrackerLog")
                 ->join("module", "courseTrackerLog.moduleID", "=", "module.moduleID")
                 ->join("course", "module.courseID", "=", "course.courseID")
-                ->selectRaw("count(distinct(courseTrackerLog.moduleID)) as modules_completed")->where("userID", "=", $userID)->where("course.courseID", "=", $courseID)->where("status", "=", "pass")->get();
+                ->selectRaw("count(distinct(courseTrackerLog.moduleID)) as modules_completed")
+                ->where("userID", "=", $userID)
+                ->where("course.courseID", "=", $courseID)
+                // ->where("status", "=", "pass")
+                ->where(function($query) {
+                $query->where("score", ">=", 65)
+                      ->orWhereNull("score")
+                      ->where("status", "=", "pass");
+            })
+            ->get();
+                // return $query2;
+                foreach($query2 as $row2) {
 
-                $getAssessmentStatus = DB::table("courseAssessmentLog")->where("courseID", "=", $courseID)->where("userID", "=", $userID)->orderBy("score", "desc")->get();
+                }
+                
+                $getAssessmentStatus = DB::table("courseAssessmentLog")
+                    ->where("courseID", "=", $courseID)
+                    ->where("userID", "=", $userID)
+                    ->orderBy("score", "desc")
+                    ->first();
 
-                if (count($getAssessmentStatus) > 0) 
-                    $row->assessmentStatus=$getAssessmentStatus[0]->status;
-                else 
+                    // if (count($getAssessmentStatus) > 0) 
+                    //     $row->assessmentStatus=$getAssessmentStatus[0]->status;
+                    // else 
+                    //     $row->assessmentStatus="null";
+                    
+                    if($getAssessmentStatus) {
+                        if ($getAssessmentStatus->score > 70) {
+                            $row->assessmentStatus="pass";
+                        } elseif($getAssessmentStatus->score == null) {
+                            $row->assessmentStatus="fail";
+                        } else
+                        $row->assessmentStatus="fail";
+                    }else 
                     $row->assessmentStatus="null";
-
-            
+                    
+                // return $query2;
                 $row->modules_completed=$query2[0]->modules_completed;
             }
 
@@ -289,7 +311,12 @@ class CoursesController extends Controller
                 $roleName = DB::table("users")->join("groupRole", "users.groupRoleId", "=", "groupRole.groupRoleId")->where("token", "=", $token)->get();
                 $role = $roleName[0]->roleName;
                 $recommendedCourses = DB::table("course")->where("courseCategory", "=", $role)->limit(4)->get();
-                return response()->json(["success" => true, "firstLogin"=> $firstLogin, "enrolledCourses" => $query, "recommendedCourses" => $recommendedCourses]);
+                return response()->json([
+                    "success" => true, 
+                    "firstLogin"=> $firstLogin, 
+                    "enrolledCourses" => $query, 
+                    "recommendedCourses" => $recommendedCourses
+                ]);
             } else {
                 $roleName = DB::table("users")->join("groupRole", "users.groupRoleId", "=", "groupRole.groupRoleId")->where("token", "=", $token)->get();
                 $role = $roleName[0]->roleName;
@@ -335,41 +362,95 @@ class CoursesController extends Controller
                 if (!$modules) {
                     return response()->json(["success" => true, "courseName" => $courseName, "modules" => "No modules for this course"]);
                 }
-
+                // return $modules;
                 foreach ($modules as $module) {
                     $moduleID = $module->moduleID;
-                    $modulesCompleted = DB::table("courseTrackerLog")->where("moduleID", "=", $moduleID)->where("userID", "=", $userID)->orderBy("score", "desc")->get();
+                    // $modulesCompleted = DB::table("courseTrackerLog")->where("moduleID", "=", $moduleID)->where("userID", "=", $userID)->orderBy("score", "desc")->get();
+                    // if (count($modulesCompleted) > 0) {
+                    //     $module->status=$modulesCompleted[0]->status;
+                    // }
+                    // else 
+                    //     $module->status="null";
 
-                    // var_dump($modulesCompleted);
-
-                    if (count($modulesCompleted) > 0) {
-                        $module->status=$modulesCompleted[0]->status;
+                    $modulesCompleted = DB::table("courseTrackerLog")->where("moduleID", "=", $moduleID)->where("userID", "=", $userID)->orderBy("score", "desc")->first();
+                    if($modulesCompleted) {
+                        if($modulesCompleted->score >= 65 || ($modulesCompleted->score == null && $modulesCompleted->status == 'pass')) {
+                            $module->status = 'pass';
+                        // } elseif($modulesCompleted->score == null && $modulesCompleted->status == 'pass') {
+                        //     $module->status = 'pass';
+                        } elseif ($modulesCompleted->score < 65) {
+                            $module->status = 'fail';
+                        } else {
+                            $module->status = 'null';
+                        }
+                    } else {
+                        $module->status = 'null';
                     }
-                    else 
-                        $module->status="null";
                 }
+
                 foreach ($assessment as $i) {
-                    $assessmentStatus = DB::table("courseAssessmentLog")->where("courseID", "=", $courseID)->where("userID", "=", $userID)->orderBy("score", "desc")->get();
-
-                    if (count($assessmentStatus) > 0) {
-                        $i->status=$assessmentStatus[0]->status;
-                    }
-                    else 
-                        $i->status="null";
+                    $assessmentStatus = DB::table("courseAssessmentLog")
+                        ->where("courseID", "=", $courseID)
+                        ->where("userID", "=", $userID)
+                        ->orderBy("score", "desc")
+                        ->first();
                     
+                    // if (count($assessmentStatus) > 0) {
+                    //     $i->status=$assessmentStatus[0]->status;
+                    // }
+                    // else 
+                    // $i->status="null";
+
+                    if($assessmentStatus) {
+                        if ($assessmentStatus->score > 70) {
+                            $i->status="pass";
+                        } elseif($assessmentStatus->score == null) {
+                            $i->status="fail";
+                        } else
+                            $i->status="fail";
+                    }else 
+                        $i->status="null";
                 }
+                
+                $getStartedCourses = DB::table("courseTrackerLog")
+                    ->join("module", "courseTrackerLog.moduleID", "=", "module.moduleID")
+                    ->join("users", "users.userID", "=", "courseTrackerLog.userID")
+                    ->join("course", "course.courseID", "=", "module.courseID")
+                    ->where("courseTrackerLog.userID", "=", $userID)
+                    ->where("course.courseID", "=", $courseID)
+                    // ->where("status", "=", "pass")
+                    // ->orderBy("score", 'desc')
+                    ->selectRaw("courseTrackerLog.moduleID, courseTrackerLog.score, courseTrackerLog.status")
+                    // ->groupBy("courseTrackerLog.moduleID")
+                    ->get();
 
-                $started = DB::table("courseTrackerLog")->join("module", "courseTrackerLog.moduleID", "=", "module.moduleID")
-                ->join("users", "users.userID", "=", "courseTrackerLog.userID")->join("course", "course.courseID", "=", "module.courseID")->where("courseTrackerLog.userID", "=", $userID)->where("course.courseID", "=", $courseID)->selectRaw("courseTrackerLog.moduleID")->groupBy("courseTrackerLog.moduleID")->get();
+                $started = [];
+                foreach($getStartedCourses as $r) {
+                    if($r->score > 49 && $r->status == 'pass') {
+                        array_push($started, $r->moduleID);
+                    } elseif($r->score > 49 && $r->status == 'fail') {
+                        array_push($started, $r->moduleID);
+                    } elseif($r->score == null && $r->status == 'pass') {
+                        array_push($started, $r->moduleID);
+                    } else {
 
-                $moduleCompleted = count($started);
+                    }
+                }
+                $moduleCompleted = count(array_unique($started));
+                // return $moduleCompleted;
 
                 $getModuleCount = DB::table('module')->join("course", "course.courseID", "=", "module.courseID")->where("course.courseID", "=", $courseID)->where("type", "=", null)->select("moduleID", "moduleName", "course.courseID")->get();
                 $moduleCount = count($getModuleCount);
 
                 $moduleProgress = $moduleCompleted . "/" . $moduleCount;
 
-                return response()->json(["success" => true, "courseName" => $courseName, "progress"=> $moduleProgress, "modules" => $modules, "assessment"=> $assessment]);
+                return response()->json([
+                    "success" => true, 
+                    "courseName" => $courseName, 
+                    "progress"=> $moduleProgress, 
+                    "modules" => $modules, 
+                    "assessment"=> $assessment
+                ]);
             } else {
                 return response()->json(["success" => false, "message" => "Course Does not Exist"], 400);
             }
@@ -422,124 +503,132 @@ class CoursesController extends Controller
         }
     }
 
-    public function insertCourseTracker (Request $req) {
+    public function insertCourseTracker (Request $req) 
+    {
         $token = $req->token;
         $moduleID = $req->moduleID;
         $score = $req->score;
         $status = $req->status;
         $userID = $this->getId("users", "token", $token, "userID");
         if ($userID) {
-            $course = DB::table('module')->where('moduleID', $moduleID)->get();
+            $courseID = $this->getId("module", "moduleID", $moduleID, "courseID");
+            $group = DB::table("groupEnrolment")->where("courseID", $courseID)->first();
+            if($group)
+            {
+                $groupID = $group->groupID;
+            } else{
+                $groupID = null;
+            }
             $module = DB::table("courseTrackerLog")->where("userID", $userID)->where("moduleID", $moduleID)->exists();
             DB::table("courseTrackerLog")->insert([
                 "userID" => $userID,
-                "score" => $score, 
+                "score" => $score,
+                "courseID" => $courseID,
                 "status"=> $status,  
                 "moduleID" => $moduleID,
             ]);
             if(!$module && $status == "pass") {
-                DB::table('userpoints')->insert([
+                DB::table('userPoints')->insert([
                     "userID" => $userID,
                     "moduleID" => $moduleID,
-                    "courseID" => $course[0]->courseID,
+                    "groupID" => $groupID,
+                    "courseID" => $courseID,
                     "points" => 1,
                     "type" => "quiz"
                 ]);
-                return response()->json(["success" => true, "message" => "successfully inserted", "loyaltypointsgained" => 1]);
             } else {
             }
 
-            return response()->json(["success" => true, "message" => "successfully inserted", "loyaltypointsgained" => 0]);
+            return response()->json(["success" => true, "message" => "successfully inserted"]);
         } else
             return response()->json(["success" => false, "message" => "User not found"], 404);
     }
-        
-    public function insertAssessmentTracker (Request $req) {
+
+    public function insertAssessmentTracker (Request $req) 
+    {
         $token = $req->token;
-        $courseID = $req->courseID;
+        $moduleID = $req->moduleID;
         $score = $req->score;
         $status = $req->status;
         $userID = $this->getId("users", "token", $token, "userID");
-
         if ($userID) {
-            // $courseID = $this->getId("module", "moduleID", $moduleID, "courseID");
+            $courseID = $this->getId("module", "moduleID", $moduleID, "courseID");
+            $group = DB::table("groupEnrolment")->where("courseID", $courseID)->first();
+            if($group)
+            {
+                $groupID = $group->groupID;
+            } else{
+                $groupID = null;
+            }
             $passedCourse = DB::table('courseAssessmentLog')->where('courseID', $courseID)->where('userID', $userID)->where('status', '=', 'pass')->exists();
             $userCourseRecordExists = DB::table('courseAssessmentLog')->where('courseID', $courseID)->where('userID', $userID)->exists();
+
             DB::table("courseAssessmentLog")->insert([
                 "userID" => $userID, 
                 "courseID" => $courseID, 
                 "score" => $score, 
                 "status" => $status 
             ]);
-        
-            $points;
+
+            $points = 0;
 
             if($status == 'pass')
-            {
-                // $type = 'assessment';
-                
+            {            
                 $course = DB::table('courseAssessmentLog')->where('courseID', $courseID)->where('userID', $userID)->get();
                 if(!$userCourseRecordExists)
                 {
                     $points = 5;
+                }else {
+                    if(count($course) == 2 && !$passedCourse)
+                    {
+                        $points = 3;
+                    } elseif(count($course) == 3 && !$passedCourse)
+                    {
+                        $points = 1;
+                    } else{
+                        $points = 0;
+                    }
+                }
+                // return $points;
+
+                DB::table('userPoints')->insert([
+                    'userID' => $userID,
+                    'courseID' => $courseID,
+                    "groupID" => $groupID,
+                    'moduleID' => 0,
+                    'points' => $points,
+                    'type' => 'assessment'
+                ]);
+            }
+
+            // award badge
+            $totalPoints = DB::table('userPoints')->where('userID', $userID)->where('courseID', $courseID)->sum('points');
+            $levels = DB::table('loyaltyLevels')->get();        
+            $previousUserScore = DB::table('userBadges')->where('userID', $userID)->first();
+            
+            // if course exists, add new total score to existing score
+            if ($previousUserScore) {
+                $newTotalPoints = $previousUserScore->points + $totalPoints;
             } else {
-                if(count($course) == 2 && !$passedCourse)
-                {
-                    $points = 3;
-                } elseif(count($course) == 3 && !$passedCourse)
-                {
-                    $points = 1;
-                } else {
-                    $points = 0;
+                $newTotalPoints = $totalPoints;
+            }
+
+            // assign loyalty level based on new total points
+            foreach($levels as $level) {
+                if($newTotalPoints >= $level->min_point && $newTotalPoints <= $level->max_point) {
+                    $loyaltylevelID = $level->loyaltylevelID;
                 }
             }
 
-            DB::table('userpoints')->insert([
-                'userID' => $userID,
-                'courseID' => $courseID,
-                'moduleID' => 0,
-                'points' => $points,
-                'type' => 'assessment'
-            ]);
-        }
+            // update if record exists for user or insert new one
+            DB::table('userBadges')->updateOrInsert(
+                ['userID' => $userID ],
+                [
+                    'points' => $newTotalPoints,
+                    'loyaltylevelID' => $loyaltylevelID
+                ]
+            );
 
-        // award badge
-        $totalPoints = DB::table('userpoints')->where('courseID', $courseID)->sum('points');
-        $levels = DB::table('loyaltylevels')->get();        
-        $courseExists = DB::table('userbadges')->where('userID', $userID)->first();
-        
-        // if course exists, add new total score to existing score
-        if ($courseExists) {
-            $newTotalPoints = $courseExists->points + $totalPoints;
-        } else {
-            $newTotalPoints = $totalPoints;
-        }
-
-        // assign loyalty level based on new total points
-        foreach($levels as $level) {
-            if($newTotalPoints >= $level->min_points && $newTotalPoints <= $level->max_points) {
-                $loyaltylevelID = $level->loyaltylevelID;
-            }
-        }
-
-        // update if record exists for user or insert new one
-        DB::table('userbadges')->updateOrInsert(
-            ['userID' => $userID ],
-            [
-                'points' => $newTotalPoints,
-                'loyaltylevelID' => $loyaltylevelID
-            ]
-        );
-
-
-        // else {
-        //     DB::table('userbadges')->insert([
-        //         'userID' => $userID,
-        //         'points' => $totalPoints,
-        //         'loyaltylevelID' => $loyaltylevelID
-        //     ]);
-        // }
-        
             return response()->json(["success" => true, "message" => "successfully inserted", "loyaltypointsgained" => $points]);
         } else
             return response()->json(["success" => false, "message" => "User not found"], 404);
@@ -570,5 +659,4 @@ class CoursesController extends Controller
             return response()->json(["success" => false, "message" => "User not Admin"], 401);
         }
     }
-
 }

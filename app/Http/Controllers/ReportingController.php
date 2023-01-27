@@ -15,7 +15,7 @@ class ReportingController extends Controller
         $location = DB::table("users")->where("companyID", "=", $companyID)->selectRaw("distinct(location)")->get();
         $queryForGrade = DB::table("users")->where("companyID", "=", $companyID)->selectRaw("distinct(userGrade)")->get();
         $queryForRoleName = DB::table("groupRole")->selectRaw("roleName")->get();
-        $queryForGroup = DB::table("group")->join("users", "group.companyID", "=", "users.companyID")->where("group.companyID", "=", $companyID)->selectRaw("distinct(groupName)")->get();
+        $queryForGroup = DB::table("group")->join("users", "group.companyID", "=", "users.companyID")->where("group.companyID", "=", $companyID)->selectRaw("distinct(groupName), groupID")->get();
         $gender = ["M", "F"];
 
         return response()->json(["success" => true, "location" => $location, "grade" => $queryForGrade, "roleName" => $queryForRoleName, "group" => $queryForGroup, "gender" => $gender]);
@@ -28,6 +28,7 @@ class ReportingController extends Controller
         $location = $req->location;
         $roleName = $req->roleName;
         $userGrade = $req->userGrade;
+        $groupID = $req->groupID;
         $query = DB::table("users")->join("role", "users.userRoleID", "=", "role.RoleID")->where("token", "=", $token)->select(["companyID", "roleName"])->get();
 
         $companyID = $query[0]->companyID;
@@ -37,7 +38,29 @@ class ReportingController extends Controller
             $queryForGroupRoleID = DB::table("groupRole")->where("roleName", "=", $roleName)->get();
             $groupRoleID = $queryForGroupRoleID[0]->groupRoleId;
         }
-        $queryForCourses = DB::table("courseEnrolment")->join("course", "courseEnrolment.CourseID", "=", "course.CourseID")->join("users", "courseEnrolment.userID", "=", "users.userID")->where("courseEnrolment.companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->selectRaw("any_value(courseEnrolment.companyID) as companyID, course.courseID, courseName, count(courseEnrolment.userID) as enrolled")->groupBy("courseID")->get();
+
+        $query = DB::table("courseEnrolment");
+        if ($groupID) {
+            $queryForCourses = $query->join("course", "courseEnrolment.CourseID", "=", "course.CourseID")
+                ->join("users", "courseEnrolment.userID", "=", "users.userID")
+                ->where("courseEnrolment.companyID", "=", $companyID)
+                ->where("courseEnrolment.groupID", "like", "%". $groupID)
+                ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                ->where("userGrade", "like", "%" . $userGrade . "%")
+                ->where("location", "like", "%" . $location . "%")
+                ->where("userGender", "like", "%" . $userGender . "%")
+                ->selectRaw("any_value(courseEnrolment.companyID) as companyID, course.courseID, courseName, count(courseEnrolment.userID) as enrolled")->groupBy("courseID")->get();
+        } else {
+            $queryForCourses = $query->join("course", "courseEnrolment.CourseID", "=", "course.CourseID")
+                ->join("users", "courseEnrolment.userID", "=", "users.userID")
+            // ->where("courseEnrolment.groupID", "like", "%" . $groupID . "%")
+                ->where("courseEnrolment.companyID", "=", $companyID)
+                ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                ->where("userGrade", "like", "%" . $userGrade . "%")
+                ->where("location", "like", "%" . $location . "%")
+                ->where("userGender", "like", "%" . $userGender . "%")
+                ->selectRaw("any_value(courseEnrolment.companyID) as companyID, course.courseID, courseName, count(courseEnrolment.userID) as enrolled")->groupBy("courseID")->get();
+        }
 
         if (!$queryForCourses) {
             $queryForCourses = [];
@@ -48,11 +71,77 @@ class ReportingController extends Controller
             $courseID = $course->courseID;
             $totalEnrolled = $course->enrolled;
 
-            $queryForCompleted = DB::table("courseAssessmentLog")->join("users", "courseAssessmentLog.userID", "=", "users.userID")->where("status", "=", "pass")->where("courseID", "=", $courseID)->where("companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->selectRaw("score, status")->orderBy("score", "desc")->get();
+            if ($groupID) {
+                $queryForCompleted = DB::table("courseAssessmentLog")
+                    ->join("users", "courseAssessmentLog.userID", "=", "users.userID")
+                    ->join("userGroup", "userGroup.userID", "=", "courseAssessmentLog.userID")
+                    ->where("status", "=", "pass")->where("courseID", "=", $courseID)
+                    ->where("userGroup.groupID", "=", $groupID)
+                    ->where("companyID", "=", $companyID)
+                    ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                    ->where("userGrade", "like", "%" . $userGrade . "%")
+                    ->where("location", "like", "%" . $location . "%")
+                    ->where("userGender", "like", "%" . $userGender . "%")
+                    ->selectRaw("distinct(courseAssessmentLog.userID), score, status")->orderBy("score", "desc")->get();
 
-            $averageSum = DB::table("courseAssessmentLog")->join("users", "courseAssessmentLog.userID", "=", "users.userID")->where("courseID", "=", $courseID)->where("companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->selectRaw("round(avg(score), 0) as average")->get();
+                $averageSum = DB::table("courseAssessmentLog")
+                    ->join("users", "courseAssessmentLog.userID", "=", "users.userID")
+                    ->join("userGroup", "userGroup.userID", "=", "courseAssessmentLog.userID")
+                    ->where("userGroup.groupID", "=", $groupID)
+                    ->where("courseID", "=", $courseID)->where("companyID", "=", $companyID)
+                    ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                    ->where("userGrade", "like", "%" . $userGrade . "%")
+                    ->where("location", "like", "%" . $location . "%")
+                    ->where("userGender", "like", "%" . $userGender . "%")
+                    ->selectRaw("round(avg(score), 0) as average")->get();
+            } else {
+                $queryForCompleted = DB::table("courseAssessmentLog")
+                    ->join("users", "courseAssessmentLog.userID", "=", "users.userID")
+                    ->where("status", "=", "pass")->where("courseID", "=", $courseID)
+                    ->where("companyID", "=", $companyID)
+                    ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                    ->where("userGrade", "like", "%" . $userGrade . "%")
+                    ->where("location", "like", "%" . $location . "%")
+                    ->where("userGender", "like", "%" . $userGender . "%")
+                    ->selectRaw("score, status")->orderBy("score", "desc")->get();
 
-            $averageRange = DB::table("courseAssessmentLog")->join("users", "courseAssessmentLog.userID", "=", "users.userID")->where("courseID", "=", $courseID)->where("companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->selectRaw("concat( MIN(score) , '-', MAX(score)) as average_range")->get();
+                $averageSum = DB::table("courseAssessmentLog")
+                    ->join("users", "courseAssessmentLog.userID", "=", "users.userID")
+                    ->where("courseID", "=", $courseID)->where("companyID", "=", $companyID)
+                    ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                    ->where("userGrade", "like", "%" . $userGrade . "%")
+                    ->where("location", "like", "%" . $location . "%")
+                    ->where("userGender", "like", "%" . $userGender . "%")
+                    ->selectRaw("round(avg(score), 0) as average")->get();
+            }
+            
+            // $queryForCompleted = DB::table("courseAssessmentLog")
+            // ->join("users", "courseAssessmentLog.userID", "=", "users.userID")
+            // ->join("GROUPCOURSE", 'gc.groupID', '=', "course assessment log.courseID")
+            // ->join("groupEnrolment", "groupEnrolment.ID", "=", 'GROUPCOURSE.groupID', '=', 'groupEnrolment.groupID')
+            // ->join('group', 'group.groupID', '=', 'group course.groupID')
+            // ->where("status", "=", "pass")->where("courseID", "=", $courseID)
+            // ->where("group.groupname", "=", "like", "%" . $groupRoleID . "%")->where("courseID", "=", $courseID)
+            // ->where("companyID", "=", $companyID)
+            // ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+            // ->where("userGrade", "like", "%" . $userGrade . "%")
+            // ->where("location", "like", "%" . $location . "%")
+            // ->where("userGender", "like", "%" . $userGender . "%")
+            // ->selectRaw("score, status")
+            // ->groupBy("userID", "courseID")  // add group by clause
+            // ->orderBy("score", "desc")
+            // ->get();
+
+
+            $averageRange = DB::table("courseAssessmentLog")
+                ->join("users", "courseAssessmentLog.userID", "=", "users.userID")
+                ->where("courseID", "=", $courseID)
+                ->where("companyID", "=", $companyID)
+                ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                ->where("userGrade", "like", "%" . $userGrade . "%")
+                ->where("location", "like", "%" . $location . "%")
+                ->where("userGender", "like", "%" . $userGender . "%")
+                ->selectRaw("concat( MIN(score) , '-', MAX(score)) as average_range")->get();
 
             $complete = count($queryForCompleted);
             $incomplete = $totalEnrolled - $complete;
@@ -88,10 +177,10 @@ class ReportingController extends Controller
                 $status = DB::table("courseAssessmentLog")->join("users", "users.userID", "=", "courseAssessmentLog.userID")->where("courseAssessmentLog.userID", "=", $userID)->where("courseAssessmentLog.courseID", "=", $courseID)->where("companyID", "=", $companyID)->select("status")->get();
 
                 $started = DB::table("courseTrackerLog")->join("module", "courseTrackerLog.moduleID", "=", "module.moduleID")
-                ->join("users", "users.userID", "=", "courseTrackerLog.userID")->join("course", "course.courseID", "=", "module.courseID")->where("courseTrackerLog.userID", "=", $userID)->where("course.courseID", "=", $courseID)->where("companyID", "=", $companyID)->selectRaw("distinct(courseTrackerLog.moduleID) as started")->get();
+                    ->join("users", "users.userID", "=", "courseTrackerLog.userID")->join("course", "course.courseID", "=", "module.courseID")->where("courseTrackerLog.userID", "=", $userID)->where("course.courseID", "=", $courseID)->where("companyID", "=", $companyID)->selectRaw("distinct(courseTrackerLog.moduleID) as started")->get();
 
                 $getModuleCompletedCount = DB::table("courseTrackerLog")->join("module", "courseTrackerLog.moduleID", "=", "module.moduleID")
-                ->join("users", "users.userID", "=", "courseTrackerLog.userID")->join("course", "course.courseID", "=", "module.courseID")->where("courseTrackerLog.userID", "=", $userID)->where("course.courseID", "=", $courseID)->where("companyID", "=", $companyID)->where("status", "=", "pass")->selectRaw("distinct(courseTrackerLog.moduleID) as moduleID")->get();
+                    ->join("users", "users.userID", "=", "courseTrackerLog.userID")->join("course", "course.courseID", "=", "module.courseID")->where("courseTrackerLog.userID", "=", $userID)->where("course.courseID", "=", $courseID)->where("companyID", "=", $companyID)->where("status", "=", "pass")->selectRaw("distinct(courseTrackerLog.moduleID) as moduleID")->get();
 
                 $moduleCompleted = count($getModuleCompletedCount);
 
@@ -107,22 +196,23 @@ class ReportingController extends Controller
                 $candidateScore = DB::table('courseAssessmentLog')->selectRaw("max(score) as candidateScore")->where("courseID", "=", $courseID)->where("userID", "=", $userID)->get();
 
                 $averageScore = DB::table("courseAssessmentLog")->selectRaw("ROUND(avg(score)) as nationalAverage")
-                ->join("users", "users.userID", "=", "courseAssessmentLog.userID")
-                ->where("courseID", "=", $courseID)->where("companyID", "=", $companyID)->get();
+                    ->join("users", "users.userID", "=", "courseAssessmentLog.userID")
+                    ->where("courseID", "=", $courseID)->where("companyID", "=", $companyID)->get();
 
                 if (count($candidateScore) > 0) {
-                
+
                     if (($candidateScore[0]->candidateScore > 0) && ($candidateScore[0]->candidateScore <= 49)) {
                         $course->averageRange = '0%-49%';
-                    }elseif (($candidateScore[0]->candidateScore >= 50) && ($candidateScore[0]->candidateScore <= 74)) {
+                    } elseif (($candidateScore[0]->candidateScore >= 50) && ($candidateScore[0]->candidateScore <= 74)) {
                         $course->averageRange = '50%-74%';
-                    }elseif (($candidateScore[0]->candidateScore >= 75) && ($candidateScore[0]->candidateScore <= 89)) {
-                        $course->averageRange= '75%-89%';
-                    }elseif ($candidateScore[0]->candidateScore >= 90) {
+                    } elseif (($candidateScore[0]->candidateScore >= 75) && ($candidateScore[0]->candidateScore <= 89)) {
+                        $course->averageRange = '75%-89%';
+                    } elseif ($candidateScore[0]->candidateScore >= 90) {
                         $course->averageRange = '90%+';
                     }
-                } else 
+                } else {
                     $course->averageRange = null;
+                }
 
                 $course->candidateSummary = [$candidateScore[0], $averageScore[0]];
             }
@@ -165,7 +255,7 @@ class ReportingController extends Controller
     public function courseView(Request $req)
     {
         $token = $req->token;
-        // $courseID = $req->courseID;
+        $groupID = $req->groupID;
         $userGender = $req->userGender;
         $location = $req->location;
         $roleName = $req->roleName;
@@ -194,8 +284,27 @@ class ReportingController extends Controller
                     $queryForGroupRoleID = DB::table("groupRole")->where("roleName", "=", $roleName)->get();
                     $groupRoleID = $queryForGroupRoleID[0]->groupRoleId;
                 }
-                $enrolled = DB::table("courseEnrolment")->join("users", "courseEnrolment.userID", "=", "users.userID")->where("courseEnrolment.courseID", "=", $courseID)->where("courseEnrolment.companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->get();
-                
+
+                $query = DB::table("courseEnrolment");
+                if ($groupID) {
+                    $enrolled = $query->join("users", "courseEnrolment.userID", "=", "users.userID")
+                        ->where("courseEnrolment.courseID", "=", $courseID)
+                        ->where("courseEnrolment.companyID", "=", $companyID)
+                        ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                        ->where("userGrade", "like", "%" . $userGrade . "%")
+                        ->where("location", "like", "%" . $location . "%")
+                        ->where('groupID', '=', $groupID)
+                        ->where("userGender", "like", "%" . $userGender . "%")->get();
+                } else {
+                    $enrolled = $query->join("users", "courseEnrolment.userID", "=", "users.userID")
+                        ->where("courseEnrolment.courseID", "=", $courseID)
+                        ->where("courseEnrolment.companyID", "=", $companyID)
+                        ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                        ->where("userGrade", "like", "%" . $userGrade . "%")
+                        ->where("location", "like", "%" . $location . "%")
+                        ->where("userGender", "like", "%" . $userGender . "%")->get();
+                }
+
                 foreach ($modules as $module) {
                     $moduleID = $module->moduleID;
 
@@ -203,15 +312,35 @@ class ReportingController extends Controller
 
                     $getMultipleModuleCompletedCount = DB::select("select courseTrackerLog.userID, COUNT(*) total_attempts FROM  courseTrackerLog join users on users.userID=courseTrackerLog.userID where companyID=$companyID and moduleID=$moduleID and status='pass' and groupRoleID like '%$groupRoleID%' and userGrade like '%$userGrade%' and location like '%$location%' and userGender like '%$userGender%' GROUP BY courseTrackerLog.userID HAVING COUNT(*) > 1");
 
-                    count($getSingleModuleCompletedCount) > 0 ? $singleModuleCompletedCount=count($getSingleModuleCompletedCount) : $singleModuleCompletedCount=0;
+                    count($getSingleModuleCompletedCount) > 0 ? $singleModuleCompletedCount = count($getSingleModuleCompletedCount) : $singleModuleCompletedCount = 0;
 
-                    count($getMultipleModuleCompletedCount) > 0 ? $multipleModuleCompletedCount=count($getMultipleModuleCompletedCount) : $multipleModuleCompletedCount=0;
+                    count($getMultipleModuleCompletedCount) > 0 ? $multipleModuleCompletedCount = count($getMultipleModuleCompletedCount) : $multipleModuleCompletedCount = 0;
 
                     array_push($completionOnFirstAttempt, $singleModuleCompletedCount);
                     array_push($completionOnMultipleAttempt, $multipleModuleCompletedCount);
                 }
 
-                $users = DB::table("courseEnrolment")->join("users", "courseEnrolment.userID", "=", "users.userID")->where("courseID", "=", $courseID)->where("courseEnrolment.companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->selectRaw("employeeID, concat(userFirstName,' ' ,userLastName) as usersName, users.userID")->skip($offset)->take($page_size)->get();
+                $query = DB::table("courseEnrolment");
+                if ($groupID) {
+                    $users = $query->join("users", "courseEnrolment.userID", "=", "users.userID")
+                        ->where("courseID", "=", $courseID)
+                        ->where("groupID", "=", $groupID)
+                        ->where("courseEnrolment.companyID", "=", $companyID)
+                        ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                        ->where("userGrade", "like", "%" . $userGrade . "%")
+                        ->where("location", "like", "%" . $location . "%")
+                        ->where("userGender", "like", "%" . $userGender . "%")
+                        ->selectRaw("employeeID, concat(userFirstName,' ' ,userLastName) as usersName, users.userID")->skip($offset)->take($page_size)->get();
+                } else {
+                    $users = $query->join("users", "courseEnrolment.userID", "=", "users.userID")
+                        ->where("courseID", "=", $courseID)
+                        ->where("courseEnrolment.companyID", "=", $companyID)
+                        ->where("groupRoleID", "like", "%" . $groupRoleID . "%")
+                        ->where("userGrade", "like", "%" . $userGrade . "%")
+                        ->where("location", "like", "%" . $location . "%")
+                        ->where("userGender", "like", "%" . $userGender . "%")
+                        ->selectRaw("employeeID, concat(userFirstName,' ' ,userLastName) as usersName, users.userID")->skip($offset)->take($page_size)->get();
+                }
 
                 $totalUsers = DB::table("courseEnrolment")->join("users", "courseEnrolment.userID", "=", "users.userID")->where("courseID", "=", $courseID)->where("courseEnrolment.companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->selectRaw("employeeID, concat(userFirstName,' ' ,userLastName) as usersName, users.userID")->count();
 
@@ -234,42 +363,46 @@ class ReportingController extends Controller
                         $countCompleted++;
                     }
 
-                    if (count($queryForCompleted) > 0 ) {
+                    if (count($queryForCompleted) > 0) {
                         if ($queryForCompleted[0]->status === "pass") {
                             $countPassed++;
                         } else {
                             $countFailed++;
                         }
                     }
-                        
-                    $user->moduleProgress=$moduleProgress;
-                    $user->status = $queryForCompleted[0]->status  ?? $user->status = 'pending';
-                    $user->score = $queryForCompleted[0]->score  ?? $user->score = 0;
+
+                    $user->moduleProgress = $moduleProgress;
+                    $user->status = $queryForCompleted[0]->status ?? $user->status = 'pending';
+                    $user->score = $queryForCompleted[0]->score ?? $user->score = 0;
 
                     if (($user->score > 0) && ($user->score <= 49)) {
                         $i++;
                         $user->averageRange = '0%-49%';
-                    }elseif (($user->score >= 50) && ($user->score <= 74)) {
+                    } elseif (($user->score >= 50) && ($user->score <= 74)) {
                         $j++;
                         $user->averageRange = '50%-74%';
-                    }elseif (($user->score >= 75) && ($user->score <= 89)) {
+                    } elseif (($user->score >= 75) && ($user->score <= 89)) {
                         $k++;
-                        $user->averageRange= '75%-89%';
-                    }elseif ($user->score >= 90) {
+                        $user->averageRange = '75%-89%';
+                    } elseif ($user->score >= 90) {
                         $l++;
                         $user->averageRange = '90%+';
                     }
-                }    
+                }
 
                 $courseAssessmentRange = array("0-49", "50-74", "75-89", "90");
                 $courseAssessmentValues = array($i, $j, $k, $l);
-                $courseUserDetails = array("noOfModules"=>count($modules), "enrolled" => count($enrolled), "completed" => $countCompleted, "notCompleted" => (count($enrolled) - $countCompleted), "passed" => $countPassed, "failed"=>$countFailed);
+                $courseUserDetails = array("noOfModules" => count($modules), "enrolled" => count($enrolled), "completed" => $countCompleted, "notCompleted" => (count($enrolled) - $countCompleted), "passed" => $countPassed, "failed" => $countFailed);
 
-                return response()->json(["success" => true, "courseID"=>$courseID, "courseName"=> $courseName, "courseDetails" => $courseUserDetails, "courseEngagementChart" => [ "first_attempt"=>$completionOnFirstAttempt, "multiple_attempt"=>$completionOnMultipleAttempt], "courseAssessment"=> ["courseAssessmentRange"=> $courseAssessmentRange, "courseAssessmentValues"=> $courseAssessmentValues], "totalUsers" => $totalUsers,  "courseTableDetails" => $users]);
-            }else 
+                return response()->json(["success" => true, "courseID" => $courseID, "courseName" => $courseName, "courseDetails" => $courseUserDetails, "courseEngagementChart" => ["first_attempt" => $completionOnFirstAttempt, "multiple_attempt" => $completionOnMultipleAttempt], "courseAssessment" => ["courseAssessmentRange" => $courseAssessmentRange, "courseAssessmentValues" => $courseAssessmentValues], "totalUsers" => $totalUsers, "courseTableDetails" => $users]);
+            } else {
                 return response()->json(["success" => false, "message" => "Course not assigned to company"], 401);
-        } else 
+            }
+
+        } else {
             return response()->json(["success" => false, "message" => "Invalid Course ID"], 400);
+        }
+
     }
 
     public function courseModuleUsers(Request $req)
@@ -298,15 +431,13 @@ class ReportingController extends Controller
         $queryForModuleId = DB::table("module")->where("courseID", "=", $courseID)->select(["moduleID", "moduleName"])->get();
         $moduleID = $req->moduleID ?? $queryForModuleId[0]->moduleID;
 
-        
         $queryForCourseId = DB::table("module")->where("moduleID", "=", $moduleID)->select(["courseID", "moduleName"])->get();
         if (count($queryForCourseId) < 0) {
             return response()->json(["success" => false, "message" => "Module does not exist"], 401);
         }
-        
+
         $courseID = $queryForCourseId[0]->courseID;
         $moduleName = $queryForCourseId[0]->moduleName;
-        
 
         if (DB::table("courseEnrolment")->where("courseEnrolment.courseID", "=", $courseID)->where("companyID", "=", $companyID)->exists()) {
 
@@ -320,7 +451,7 @@ class ReportingController extends Controller
                 $users = DB::table("courseEnrolment")->join("users", "courseEnrolment.userID", "=", "users.userID")->where("courseID", "=", $courseID)->where("courseEnrolment.companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->selectRaw("employeeID, concat(userFirstName,' ' ,userLastName) as usersName, users.userID")->skip($offset)->take($page_size)->get();
 
                 $totalUsers = DB::table("courseEnrolment")->join("users", "courseEnrolment.userID", "=", "users.userID")->where("courseID", "=", $courseID)->where("courseEnrolment.companyID", "=", $companyID)->where("groupRoleID", "like", "%" . $groupRoleID . "%")->where("userGrade", "like", "%" . $userGrade . "%")->where("location", "like", "%" . $location . "%")->where("userGender", "like", "%" . $userGender . "%")->selectRaw("employeeID, concat(userFirstName,' ' ,userLastName) as usersName, users.userID")->count();
-                
+
             } else {
                 $users = DB::table("courseEnrolment")->join("users", "courseEnrolment.userID", "=", "users.userID")->where("courseID", "=", $courseID)->where("courseEnrolment.companyID", "=", $companyID)->selectRaw("employeeID, concat(userFirstName,' ' ,userLastName) as usersName, users.userID")->skip($offset)->take($page_size)->get();
 
@@ -330,15 +461,17 @@ class ReportingController extends Controller
 
             foreach ($users as $user) {
                 $userID = $user->userID;
-                $getModuleCompletedCount = DB::table('courseTrackerLog')->select(["courseTrackerLog.userID","moduleID", "userID", "score", "status", "created_at"])->where("moduleID", "=", $moduleID)->where("userID", "=", $userID)->orderBy("score", "desc")->get();
+                $getModuleCompletedCount = DB::table('courseTrackerLog')->select(["courseTrackerLog.userID", "moduleID", "userID", "score", "status", "created_at"])->where("moduleID", "=", $moduleID)->where("userID", "=", $userID)->orderBy("score", "desc")->get();
 
-                count($getModuleCompletedCount) > 0 ? $user->attempts=count($getModuleCompletedCount) : $user->attempts=null;
-                count($getModuleCompletedCount) > 0 ? $user->maxScore=$getModuleCompletedCount[0]->score : $user->maxScore=null;
-                count($getModuleCompletedCount) > 0 ? $user->status=$getModuleCompletedCount[0]->status : $user->status=null;
+                count($getModuleCompletedCount) > 0 ? $user->attempts = count($getModuleCompletedCount) : $user->attempts = null;
+                count($getModuleCompletedCount) > 0 ? $user->maxScore = $getModuleCompletedCount[0]->score : $user->maxScore = null;
+                count($getModuleCompletedCount) > 0 ? $user->status = $getModuleCompletedCount[0]->status : $user->status = null;
             }
 
-            return response()->json(["success" => true, "moduleID"=>$moduleID, "moduleName"=> $moduleName, "courseModuleUsers" => $users, "totalUsers" => $totalUsers]);
-        } else 
-        return response()->json(["success" => false, "message" => "Course not assigned to company"], 401);
+            return response()->json(["success" => true, "moduleID" => $moduleID, "moduleName" => $moduleName, "courseModuleUsers" => $users, "totalUsers" => $totalUsers]);
+        } else {
+            return response()->json(["success" => false, "message" => "Course not assigned to company"], 401);
+        }
+
     }
 }

@@ -1,11 +1,15 @@
 <?php
 
 namespace App\Http\Controllers;
+use App\Services\EmailService;
 
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
+
+use Illuminate\Support\Facades\Validator;
 class AuthController extends Controller
 {
 
@@ -14,10 +18,10 @@ class AuthController extends Controller
         $details = [
             'name' => $firstname,
             'email' => $email,
-            'link' =>  URL::to('/verifyemail/' .$email_token),
-            'websiteLink' =>  URL::to('/'),
-            // 'link' => 'https://learningplatform.sandbox.9ijakids.com/verifyemail/' . $email_token,
-            // 'websiteLink' => 'https://learningplatform.sandbox.9ijakids.com'
+            // 'link' =>  URL::to('/verifyemail/' .$email_token),
+            // 'websiteLink' =>  URL::to('/'),
+            'link' => 'https://serviceschoolhouse.com/verifyemail/' . $email_token,
+            'websiteLink' => 'https://serviceschoolhouse.com/'
         ];
 
         Mail::to($email)->send(new \App\Mail\VerifyEmail($details));
@@ -31,6 +35,11 @@ class AuthController extends Controller
             'websiteLink' => 'https://learningplatform.sandbox.9ijakids.com'
         ];
         Mail::to($email)->send(new \App\Mail\ForgotPassword($details));
+    }
+
+    public function __construct(EmailService $emailService)
+    {
+        $this->emailService = $emailService;
     }
 
     // each endpoint will have a function
@@ -74,9 +83,12 @@ class AuthController extends Controller
                 DB::table("group")->insert(["companyID" => $companyID, "groupName" => $roleName]);
             } 
 
-            $query = DB::table("users")->where("userEmail", "=", $email)->select(["token", "userFirstName", "userLastName"])->get();
+            $query = DB::table("users")->where("userEmail", "=", $email)->get();
             $userData = ["token" => $query[0]->token, "role" => "admin", "name" => $query[0]->userFirstName.' '.$query[0]->userLastName];
+            
+            $this->emailService->createTemplate($companyID);
             $this->sendVerifyEmail($firstname, $email, $email_token);
+            
             return response()->json(["success" => true, "data" => $userData, "message" => 'Email sent, please check your inbox']);
         } else {
             return response()->json(["success" => false, "message" => "Company or Admin User Already Exist"], 401);
@@ -93,14 +105,18 @@ class AuthController extends Controller
         }
     }
 
-    public function login(Request $req)
+    public function loginOld(Request $req)
     {
         $email = $req->email;
         $password = $req->password;
 
-        $query = DB::table("users")->join("role", "users.userRoleID", "=", "role.roleID")
-        ->join("groupRole", "groupRole.groupRoleId", "=", "users.groupRoleId" )->join("company", "company.companyID", "=", "users.companyID")->where("users.userEmail", "=", $email)->select(["users.*", "role.roleName", 
-        "groupRole.roleName as groupRoleName", "companyName"])->get();
+        $query = DB::table("users")
+        ->join("role", "users.userRoleID", "=", "role.roleID")
+        ->join("groupRole", "groupRole.groupRoleId", "=", "users.groupRoleId" )
+        ->join("company", "company.companyID", "=", "users.companyID")
+        ->where("users.userEmail", "=", $email)
+        ->select(["users.*", "role.roleName", "groupRole.roleName as groupRoleName", "companyName"])
+        ->get();
         if (count($query) === 1) {
             $user = $query[0];
             $pass_ok = password_verify($password, $user->userPassword);
@@ -145,6 +161,68 @@ class AuthController extends Controller
         }
     }
 
+    public function login(Request $req)
+    {
+        $validator = Validator::make($req->all(), [
+            'email' => ['required', 'string', 'email'],
+            'password' => 'required',
+        ]);
+
+        if($validator->fails()){   
+            return response(['error' => $validator->errors()->all()]);
+        }
+
+        $email = $req->email;
+        $password = $req->password;
+
+        $user = DB::table("users")->join("role", "users.userRoleID", "=", "role.roleID")
+        ->join("groupRole", "groupRole.groupRoleId", "=", "users.groupRoleId" )->join("company", "company.companyID", "=", "users.companyID")->where("users.userEmail", "=", $email)->select(["users.*", "role.roleName", "groupRole.roleName as groupRoleName", "companyName"])->first();
+
+        if(!$user || $password != password_verify($password, $user->userPassword))
+        {
+            return response(["success" => false, "message" => "Invalid email or password"], 401);
+        }
+
+        $token = $this->RandomCodeGenerator(80);
+        DB::table("users")->where("userEmail", "=", $email)->update(["token" => $token]);
+
+        $loginAttempts = DB::table("login_logs")->where("email", "=", $email)->where("status", "=", 200)->first();
+        $firstLogin = true;
+        if($loginAttempts)
+        {
+            $firstLogin = false;
+        }
+
+        DB::table("login_logs")->insert([ "userID" => $user->userID, "email" => $email, "message" => "login successful", "status" => 200, "updated_at" => Carbon::now()->toDateTimeString()]); //logout status
+
+        $name = $user->userFirstName.' '.$user->userLastName;
+        $userData = ["name"=> $name, "token" => $token, "role" => $user->roleName, "groupRoleName"=> $user->groupRoleName, "companyName"=> $user->companyName, "firstLogin"=> $firstLogin];
+
+        return response()->json(["success" => true, "data" => $userData], 200);
+
+        
+    }
+
+    public function logout(Request $req)
+    {
+        $token = $req->token;
+
+        $user = DB::table('users')->where('token', $token)->first();
+        if($user) {
+            DB::table('users')->where('token', $token)->update([
+                'token' => ''
+            ]);
+
+            DB::table('login_logs')->where('email', $user->userEmail)->update([
+                'updated_at' => Carbon::now()->toDateTimeString()
+            ]);
+
+            return response(["success" => true, "message" => "Logout successful"], 200);
+        }
+
+        return response(["success" => false, "message" => "User not logged in"], 401);
+    }
+
     public function forgotPassword(Request $req)
     {
         $email = $req->email;
@@ -172,7 +250,5 @@ class AuthController extends Controller
             return response()->json(["success" => false, "message" => "Link has expired please login"], 400);
         }
     }
-
- 
 
 }

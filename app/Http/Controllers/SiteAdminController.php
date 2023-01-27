@@ -104,15 +104,7 @@ class SiteAdminController extends Controller
             } else {
                 $imagePath = $this->getBaseUrl() . "/" . $courseImagePath;
 
-                DB::table("course")->insert([
-                    "courseName" => $courseName, 
-                    "courseDescription" => $courseDescription, 
-                    "price" => $coursePrice, 
-                    "courseCategory" => $courseCategory, 
-                    "image" => $imagePath, 
-                    "published" => $published,
-                    "duration" => $duration
-                ]);
+                DB::table("course")->insert(["courseName" => $courseName, "courseDescription" => $courseDescription, "price" => $coursePrice, "courseCategory" => $courseCategory, "image" => $imagePath, "published" => $published, "duration" => $duration]);
 
                 return response()->json(["success" => true, "message" => "Course Creation Successful"]);
             }
@@ -123,7 +115,7 @@ class SiteAdminController extends Controller
 
     public function editCourse(Request $req)
     {
-        // $token=$req->token;
+        $token=$req->token;
         $courseID = $req->courseID;
         $courseName = $req->courseName;
         $courseDescription = $req->courseDescription;
@@ -133,29 +125,31 @@ class SiteAdminController extends Controller
         $published = $req->published;
         $image= $req->image;
         $duration = $req->duration;
-
-        // $query=DB::table("users")->where('token',"=", $token)->get();
         
         // Checks if courseID exists
-        // if(count($query)==1){
-            if (DB::table("course")->where("courseID", "=", $courseID)->exists()) {
+        if (DB::table("course")->where("courseID", "=", $courseID)->exists()) {
 
-                if($req->file("courseImage")) {
-                    $courseImageName = $req->file("courseImage")->getClientOriginalName();
-                    $courseImagePath = $req->file("courseImage")->storeAs("CourseCoverImages", $courseImageName, "learningPlatformFolder");
-                    DB::table("course")->where("courseID", "=", $courseID)->update(["published" => $courseImagePath]);
-                }
-
-                DB::table("course")->where("courseID", "=", $courseID)->update(["courseName" => $courseName, "courseDescription" => $courseDescription, "price" => $price, "courseCategory" => $courseCategory,  "published" => $published, "image" => $image,
-                "duration" => $duration]);
-
-                return response()->json(["success" => true, "message" => "Course Updated Successful"]);
-            } else {
-                return response()->json(["success" => false, "message" => "Course Does Not Exists"], 400);
+            if($req->file("courseImage")) {
+                $courseImageName = $req->file("courseImage")->getClientOriginalName();
+                $courseImagePath = $req->file("courseImage")->storeAs("CourseCoverImages", $courseImageName, "learningPlatformFolder");
+                DB::table("course")->where("courseID", "=", $courseID)->update(["published" => $courseImagePath]);
             }
+
+            DB::table("course")->where("courseID", "=", $courseID)->update(["courseName" => $courseName, "courseDescription" => $courseDescription, "price" => $price, "courseCategory" => $courseCategory,  "published" => $published, "image" => $image,
+            "duration" => $duration]);
+
+            return response()->json(["success" => true, "message" => "Course Updated Successful"]);
+        } else {
+            return response()->json(["success" => false, "message" => "Course Does Not Exists"], 400);
+        }
+
+
+        // $query=DB::table("users")->where('token',"=", $token)->get();
+        // if(count($query)==1){
         // }
-        // return response()->json(["success" => false, "message" =>"Not a Site Admin"], 400);
+        // return response()->json(["success" => false, "message" =>"Not a Site Admin"]);
     }
+
 
     public function publish (Request $req) {
         $published = $req->published;
@@ -258,6 +252,9 @@ class SiteAdminController extends Controller
         return response()->json(["success" => true, "orders" => $orders]);
     }
 
+  
+
+
     public function editOrderStatus(Request $req)
     {
 
@@ -272,7 +269,10 @@ class SiteAdminController extends Controller
         } else {
             return response()->json(["success" => false, "message" => "Order does not exist"]);
         }
-    }     
+        }
+
+  
+     
 
     public function deleteBundle(Request $req)
     {
@@ -324,7 +324,7 @@ class SiteAdminController extends Controller
         }
         else{
             // Folder path matches ssh modules path
-            $storageDestinationPath= storage_path("../../ModuleFolders/" . "/" . $course->courseName);
+            $storageDestinationPath= storage_path("../../ModuleFolders/". "/" . $course->courseName);
        
             //If folder doesnt exist, it creates a new folder, ignore vs code 'undefined type file' error 
             if (!\File::exists( $storageDestinationPath)) {
@@ -336,92 +336,14 @@ class SiteAdminController extends Controller
 
             //We get the folder name without extension and add on to the base url. This is saved in the db
             $folder_name = explode(".", $folder_name)[0];
-            $folderPath = "../../../" . "ModuleFolders" . "/" . $course->courseName . "/". $folder_name;
+            $folderPath = "../../../" . "ModuleFolders" . "/" . $course->courseName . "/" . $folder_name;
 
             //Add data to db
             $moduleID = DB::table("module")->insertGetId(["moduleName" => $moduleName, "moduleDescription" => $moduleDescription, "courseID" => $courseID, "folder" => $folderPath,"duration" =>$duration]);
 
             return response()->json(["success" => true, "message" => "Module Added", "moduleID" => $moduleID]);
         }
-    }
-
-    // public function addModule(Request $req)
-    // {
-    //     $moduleName = $req->moduleName;
-    //     $moduleDescription = $req->moduleDescription;
-    //     $courseID = $req->courseID;
-    //     $duration=Carbon::now()->hour(0)->minute(0)->second($req->duration)->toTimeString();
-
-    //     // Validate that a file was uploaded
-    //     $validator = Validator::make($req->file(), [
-    //         "folderzip" => "required"
-    //     ]);
-    //     if ($validator->fails()) {
-    //         return response()->json(["success" => false, "message" => "Module Folder not uploaded"], 400);
-    //     }
-        
-    //     $moduleFolderName = $req->file("folderzip")->getClientOriginalName();
-    //     // Customize "learningPlatformFolder" in config > filesystem.php
-    //     $moduleFolderPath = $req->file("folderzip")->storeAs("ModuleFolders", $moduleFolderName, "learningPlatformFolder");
-
-    //     // Checks if course exists
-    //     $course = DB::table("course")->where("courseID", "=", $courseID)->first();
-    //     if (DB::table("course")->where("courseID", "=", $courseID)->exists()) {
-    //         // Checks if module already exists
-    //         if (DB::table("module")->where("courseID", "=", $courseID)->where("moduleName", "=", $moduleName)->doesntExist()) {
-
-    //             // Check of folder was uploaded successfully
-    //             if (!$moduleFolderPath) {
-    //                 return response()->json(["success" => false, "message" => "Folder not Uploaded"], 400);
-    //             } else {
-    //                 $foldername = explode(".", $moduleFolderName)[0];
-    //                 $folderPath = $this->getBaseUrl() . "/" . "ModuleFolders" . "/" . $course->courseName . "/" . $foldername;
-    //                 // return $folderPath;
-
-    //                 $zip = new ZipArchive();
-    //                 $status = $zip->open($req->file("folderzip")->getRealPath());
-    //                 if ($status !== true) {
-    //                     throw new \Exception($status);
-    //                 }
-
-    //                 $storageDestinationPath= storage_path("../../ModuleFolders" . "/" . $course->courseName);
-       
-    //                 if (!\File::exists( $storageDestinationPath)) {
-    //                     \File::makeDirectory($storageDestinationPath, 0755, true);
-    //                 }
-
-    //                 $zip->extractTo($storageDestinationPath);
-    //                 $zip->close();
-
-    //                 // $unzipper = new Unzip();
-    //                 // // Unzip the zip folder uploaded above
-    //                 // $files = $unzipper->extract(storage_path("../../") . $moduleFolderPath, storage_path("../../ModuleFolders"));
-    //                 // // Check if Zip File still exists then delete
-    //                 // if (File::exists(storage_path("../../") . $moduleFolderPath)) {
-    //                 //     File::delete(storage_path("../../") . $moduleFolderPath);
-    //                 // }
-
-    //                 $folderPath = explode(":8000", $folderPath)[1]; // local
-    //                 // $folderPath = explode(".com", $folderPath)[1];
-    //                 $folderPath = "../../.." . $folderPath;
-    //                 $moduleID = DB::table("module")->insertGetId([
-    //                     "moduleName" => $moduleName, 
-    //                     "moduleDescription" => $moduleDescription, 
-    //                     "courseID" => $courseID, 
-    //                     "folder" => $folderPath,
-    //                     "duration" => $duration
-    //                 ]);
-
-    //                 return response()->json(["success" => true, "message" => "Module Added", "moduleID" => $moduleID]);
-    //             }
-    //         } else {
-    //             return response()->json(["success" => true, "message" => "Module already exist"], 400);
-    //         }
-    //     } else {
-    //         return response()->json(["success" => false, "message" => "Course does not exist"], 400);
-    //     }
-    // }
-    
+    }   
 
     public function editModule(Request $req)
     {
@@ -584,8 +506,7 @@ class SiteAdminController extends Controller
         }
     }
 
-    public function addCourseToOrders(Request $req)
-    {
+    public function addCourseToOrders(Request $req){
             $token = $req->token;
             $orderNumber = $req->orderNumber;
             $courseID= $req->courseID;
@@ -616,8 +537,7 @@ class SiteAdminController extends Controller
             
     }
 
-    public function coursesInBundles(Request $req)
-    {
+    public function coursesInBundles(Request $req){
         $token = $req->token;
             
         if(DB::table("users")->where('token',"=", $token)->where("userRoleID","=",3)->exists()){
@@ -629,8 +549,7 @@ class SiteAdminController extends Controller
     }
 
 
-    public function adminLogin (Request $req) 
-    {
+    public function adminLogin (Request $req) {
         $token= $req->token;
         $accessCode= $req->accessCode;
         $userEmail= $req->userEmail;
@@ -646,8 +565,7 @@ class SiteAdminController extends Controller
     }
 
     
-    public function assignCoursesToCompany(Request $req)
-    {
+    public function assignCoursesToCompany(Request $req){
         $companyID = $req->companyID;
         $courseDescriptions= $req->courseDescription;
         $errors = [];
@@ -664,7 +582,15 @@ class SiteAdminController extends Controller
                 // check if course exists
                 $courseExists = DB::table("course")->where( "courseID", $courseID )->exists();
                 if ($courseExists) {
-                    DB::table("courseSeat")->insert(["seats" => $seats, "courseID" => $courseID, "companyID" => $companyID]);
+                    $previousSeats = DB::table("courseSeat")->where("companyID", "=", $companyID)->where("courseID", "=", $courseID)->orderBy('courseSeatID', 'DESC')->first();
+                    if(!$previousSeats) {
+                        $previousSeatsCount = 0;
+                    } else {
+                        $previousSeatsCount = $previousSeats->seats;
+                    }
+                    // return $previousSeatsCount;
+                    $totalSeats = $previousSeatsCount + $seats;
+                    DB::table("courseSeat")->insert(["seats" => $totalSeats, "courseID" => $courseID, "companyID" => $companyID]);
                 } else {
                     array_push($errors, "Course with course id " . $courseID . " does not exist");
                 }
@@ -676,8 +602,7 @@ class SiteAdminController extends Controller
         }
     }  
 
-    public function  getCandidatesScores(Request $req)
-    {
+    public function  getCandidatesScores(Request $req){
         // $courseID = $req->courseID;
         // $userID = $req->userID;
 
@@ -692,8 +617,7 @@ class SiteAdminController extends Controller
 
     }
 
-    public function getDeadline(Request $req)
-    {
+    public function getDeadline(Request $req){
         $courseID= $req->courseID;
 
         $current_time = Carbon::now();
@@ -704,8 +628,7 @@ class SiteAdminController extends Controller
         return response()->json(["success" => false, "message" =>"Course is currently inactive"]);
     }
 
-    public function addToWishList(Request $req)
-    {
+    public function addToWishList(Request $req){
         $courseID = $req->courseID;
         $userID = $req->userID;
 
@@ -750,7 +673,7 @@ class SiteAdminController extends Controller
         if (DB::table('category')->where("categoryName", "=", $categoryName)->exists()) {
             return response()->json(["success" => false, "message" => "Category already exist"], 400);
         }else {
-            DB::table('courseCategory')->insert([
+            DB::table('category')->insert([
                 "categoryName" => $categoryName,
                 "categoryDescription" => $categoryDescription
             ]);

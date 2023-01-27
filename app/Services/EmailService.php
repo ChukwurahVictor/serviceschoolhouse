@@ -11,10 +11,12 @@ use Illuminate\Support\Facades\URL;
 
 class EmailService
 {
-   public function sendMail($template, $user, $course) 
+   public function sendMail($template, $type, $user, $course) 
    {
+      // return $template;
       $body = $template->emailBody;  // this is template dynamic body. You may get other parameters too from database. $title = $template->title; $from = $template->from;
       $subject = $template->emailSubject;
+      $image = $template->image;
 
       if($user) {
          $data['firstname'] = $user->userFirstName;
@@ -35,19 +37,52 @@ class EmailService
       $details = [
          'firstname' => $user->userFirstName,
          'email' => "chukwurahvictor7@gmail.com",
+         'subject' => $subject,
+         'image' => $image,
          'body' => $body,
       ];
 
-      //$mailObject = new TestBook($request); // you can make php artisan make:mail MyMail
-      Mail::to($details['email'])->send(new \App\Mail\CreateUser($details));
+      // return $details;
 
+      if($type == 'user_registration') {
+         Mail::to($details['email'])->send(new \App\Mail\CreateUser($details));
+      } else if ($type == 'assigned_course') {
+         Mail::to($details['email'])->send(new \App\Mail\AssignedACourse($details));
+      }
    }
 
-   public function saveTemplate($type, $subject, $body) 
+   public function sendCustomMail($subject, $body, $user, $course) 
    {
-      $typeExists = DB::table('emailTemplates')->where('type', $type)-first();
+      if($user) {
+         $data['firstname'] = $user->userFirstName;
+         $data['lastname'] = $user->userLastName;
+         $data['email'] = $user->userEmail;
+         $data['password'] = $user->employeeID;
+      }
+
+      if($course) {
+         $data['title'] = $course->courseName;
+      }
+
+      foreach($data as $key=>$parameter)
+      {
+         $body = str_replace('{{' . $key . '}}', $parameter, $body); // this will replace {{username}} with $data['username']
+      }
+      
+      $details = [
+         'firstname' => $user->userFirstName,
+         'email' => "chukwurahvictor7@gmail.com",
+         'subject' => $subject,
+         'body' => $body,
+      ];
+      Mail::to($details['email'])->send(new \App\Mail\CustomMail($details));
+   }
+
+   public function saveTemplate($type, $subject, $body, $companyID) 
+   {
+      $typeExists = DB::table('emailTemplates')->where('type', $type)->where('companyID', $companyID)->first();
       if($typeExists) {
-         $updateBody = DB::table('emailTemplates')->where('type', $type)->update([
+         $updateBody = DB::table('emailTemplates')->where('type', $type)->where('companyID', $companyID)->update([
             'emailSubject' => $subject,
             'emailBody' => $body,
          ]);  
@@ -67,9 +102,18 @@ class EmailService
       }
    }
 
-   public function customMail($body, $subject, $user)
+   public function createTemplate($companyID)
    {
-      //get users, loop through, send mail with sendMail function
+      // create default template for newly created company
+      $temps = DB::table('defaultEmailTemplates')->get();
+      foreach ($temps as $temp) {
+         DB::table('emailTemplates')->insert([
+            'emailSubject' => $temp->emailSubject,
+            'emailBody' => $temp->emailBody,
+            'companyID' => $companyID,
+            'type' => $temp->type
+         ]);
+      }
    }
 }
 

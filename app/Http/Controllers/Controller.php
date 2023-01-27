@@ -53,17 +53,16 @@ class Controller extends BaseController
 
     public function formatIntlPhoneNo($phone)
     {
-        $d = substr($phone, 0, 1);
-        if ($d === '0') {
+        if (substr($phone, 0, 1) === '0') {
             return '234' . substr($phone, 1);
         }
-        if ($d === '7') {
+        if (substr($phone, 0, 1) === '7') {
             return '2347' . substr($phone, 1);
         }
-        if ($d === '8') {
+        if (substr($phone, 0, 1) === '8') {
             return '2348' . substr($phone, 1);
         }
-        if ($d === '9') {
+        if (substr($phone, 0, 1) === '9') {
             return '2349' . substr($phone, 1);
         }
         return $phone;
@@ -85,5 +84,10 @@ class Controller extends BaseController
         if (count($table)>0) {
             return $table[0]->userID;
         }
+    }
+
+    public function getUserGroupID($userID) {
+        $table = DB::table('userGroup')->where('userID', '=', $userID)->first();
+        return $table->groupID;
     }
 }

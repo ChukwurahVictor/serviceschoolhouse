@@ -153,7 +153,7 @@
                     <!-- START CENTERED WHITE CONTAINER -->
                     <table class="main" style="border-collapse: separate; width: 100%; background: #ffffff; border-radius: 3px;">
                         <div style="text-align: center;">
-                            <img src="https://serviceschoolhouse.com/static/media/logo_new.d1db4956.png" title="Logo" width="150px" height="auto" style="margin-top: 1rem;" />
+                            @yield("image")
                         </div>
 
                         <!-- START MAIN CONTENT AREA -->
